@@ -81,11 +81,12 @@ export class DesignerComponent implements OnInit, OnDestroy {
   edgeType        = signal('sequential');
   edgeLabel       = signal('');
 
-  // ── IA State ─────────────────────────────────────────────────
+  // ── IA Chat State ────────────────────────────────────────────
   showIaPanel     = signal(false);
-  iaInstruction   = signal('');
+  iaQuestion      = signal('');
   isListeningIa   = signal(false);
   isProcessingIa  = signal(false);
+  chatMessages    = signal<{ role: 'user' | 'agent'; text: string }[]>([]);
   private recognition: any;
 
   // ── ngx-graph observables ────────────────────────────────────
@@ -437,24 +438,23 @@ export class DesignerComponent implements OnInit, OnDestroy {
   get canSave(): boolean { return !!this.policyName().trim() && !this.saving(); }
   trackById(_: number, x: { id: string }): string { return x.id; }
 
-  // ── IA Assistant ──────────────────────────────────────────────
+  // ── IA Chat ───────────────────────────────────────────────────
   toggleIaPanel(): void {
     this.showIaPanel.set(!this.showIaPanel());
   }
 
   private initSpeechRecognition(): void {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      this.recognition = new SpeechRecognition();
-      this.recognition.lang = 'es-ES';
-      this.recognition.interimResults = false;
-      this.recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        this.iaInstruction.update(v => v ? v + ' ' + transcript : transcript);
-      };
-      this.recognition.onerror = () => this.isListeningIa.set(false);
-      this.recognition.onend = () => this.isListeningIa.set(false);
-    }
+    if (!SpeechRecognition) return;
+    this.recognition = new SpeechRecognition();
+    this.recognition.lang = 'es-ES';
+    this.recognition.interimResults = false;
+    this.recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      this.iaQuestion.update(v => v ? v + ' ' + transcript : transcript);
+    };
+    this.recognition.onerror = () => this.isListeningIa.set(false);
+    this.recognition.onend   = () => this.isListeningIa.set(false);
   }
 
   toggleIaVoice(): void {
@@ -468,11 +468,41 @@ export class DesignerComponent implements OnInit, OnDestroy {
     }
   }
 
-  aplicarIa(): void {
-    const inst = this.iaInstruction().trim();
-    if (!inst) return;
+  sendIaMessage(): void {
+    const q = this.iaQuestion().trim();
+    if (!q || this.isProcessingIa()) return;
 
+    // Push user message
+    this.chatMessages.update(msgs => [...msgs, { role: 'user', text: q }]);
+    this.iaQuestion.set('');
     this.isProcessingIa.set(true);
+
+    this.iaSvc.designerAgent(q).subscribe({
+      next: (res) => {
+        this.chatMessages.update(msgs => [
+          ...msgs,
+          { role: 'agent', text: res?.response ?? 'Sin respuesta.' }
+        ]);
+        this.isProcessingIa.set(false);
+        // Scroll chat to bottom after render
+        setTimeout(() => this.scrollChatToBottom(), 50);
+      },
+      error: (err) => {
+        const msg = typeof err.error === 'string' ? err.error : 'Error al conectar con el agente.';
+        this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: `⚠️ ${msg}` }]);
+        this.isProcessingIa.set(false);
+        setTimeout(() => this.scrollChatToBottom(), 50);
+      }
+    });
+  }
+  sendDesignFlow(): void {
+    const q = this.iaQuestion().trim();
+    if (!q || this.isProcessingIa()) return;
+
+    this.chatMessages.update(msgs => [...msgs, { role: 'user', text: `✨ ${q}` }]);
+    this.iaQuestion.set('');
+    this.isProcessingIa.set(true);
+
     const diagramObj = {
       swimlanes: this.swimlanes(),
       nodes: this.graphNodes().map(n => ({ id: n.id, data: n.data })),
@@ -482,28 +512,42 @@ export class DesignerComponent implements OnInit, OnDestroy {
       }))
     };
 
-    this.iaSvc.designFlow({ diagram: diagramObj, instruction: inst }).subscribe({
+    this.iaSvc.designFlow({ diagram: diagramObj, instruction: q }).subscribe({
       next: (res) => {
         if (res && res.diagram) {
           try {
             const newDiagram = typeof res.diagram === 'string' ? JSON.parse(res.diagram) : res.diagram;
             this.parseDiagram(newDiagram);
-            setTimeout(() => {
-              this.update$.next(true);
-              this.broadcastUpdate();
-            }, 100);
+            setTimeout(() => { this.update$.next(true); this.broadcastUpdate(); }, 100);
+            this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '✅ Diagrama actualizado con éxito.' }]);
           } catch (e) {
-            console.error('Error parsing IA diagram response:', e);
+            this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '⚠️ La IA respondió pero no pude interpretar el diagrama.' }]);
           }
+        } else {
+          this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '⚠️ Sin respuesta válida del servidor.' }]);
         }
-        this.iaInstruction.set('');
         this.isProcessingIa.set(false);
+        setTimeout(() => this.scrollChatToBottom(), 50);
       },
       error: (err) => {
-        console.error('Error del asistente IA:', err.error || err.message || err);
-        alert('Error al generar el diagrama: ' + (typeof err.error === 'string' ? err.error : 'Ver consola para más detalles'));
+        const msg = typeof err.error === 'string' ? err.error : 'Error al aplicar el cambio.';
+        this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: `⚠️ ${msg}` }]);
         this.isProcessingIa.set(false);
+        setTimeout(() => this.scrollChatToBottom(), 50);
       }
     });
+  }
+
+
+  onIaKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      this.sendIaMessage();
+    }
+  }
+
+  private scrollChatToBottom(): void {
+    const el = document.querySelector('.ia-chat__messages');
+    if (el) el.scrollTop = el.scrollHeight;
   }
 }

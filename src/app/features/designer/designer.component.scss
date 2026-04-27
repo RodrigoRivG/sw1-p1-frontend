@@ -227,6 +227,25 @@
     }
   }
 
+  &__close {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 4px;
+    transition: color 0.15s;
+
+    &:hover { color: #fff; }
+  }
+
+  // When title is inside a header row, remove its bottom margin
+  &__header &__title {
+    margin-bottom: 0;
+  }
+
   &__empty {
     font-size: 0.8rem;
     color: var(--text-muted);
@@ -476,166 +495,231 @@
   border-width: 2px;
 }
 
-// ── IA Assistant ──
-.ia-toggle-btn {
-  position: absolute;
-  bottom: 20px;
-  right: 280px; /* offset to avoid right panel */
-  background: var(--bg-surface);
-  border: 1px solid rgba(167, 139, 250, 0.4);
-  border-radius: 20px;
-  padding: 0.5rem 1rem;
+// ── IA Toolbar Button ──────────────────────────────────────────
+.toolbar__btn--ia {
+  border-color: rgba(167, 139, 250, 0.4);
   color: #a78bfa;
   font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  transition: all 0.2s;
-  z-index: 50;
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: rgba(167, 139, 250, 0.1);
-    transform: translateY(-2px);
+    border-color: #a78bfa;
+    color: #a78bfa;
   }
 
-  &--active {
+  &.toolbar__btn--ia-active {
     background: #a78bfa;
+    border-color: #a78bfa;
     color: #fff;
   }
 }
 
-.ia-panel {
-  position: absolute;
-  bottom: 70px;
-  right: 280px; /* offset to avoid right panel */
-  width: 320px;
-  background: rgba(15, 23, 42, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(167, 139, 250, 0.3);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 50;
-  animation: slideUpIa 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+// ── IA Chat Sidebar ────────────────────────────────────────────
+.designer__ia-chat {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-left: 1px solid rgba(167, 139, 250, 0.25);
   display: flex;
   flex-direction: column;
+  animation: slideInIa 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+}
 
+@keyframes slideInIa {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.ia-chat {
   &__header {
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    justify-content: space-between;
     padding: 0.75rem 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(167, 139, 250, 0.15);
+    background: rgba(167, 139, 250, 0.06);
+    flex-shrink: 0;
+  }
 
-    h4 {
-      margin: 0;
-      color: #a78bfa;
-      font-size: 0.95rem;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-
-      &::before {
-        content: "✨";
-      }
-    }
+  &__title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a78bfa;
   }
 
   &__close {
     background: none;
     border: none;
     color: var(--text-muted);
-    font-size: 1.2rem;
+    font-size: 1.3rem;
     cursor: pointer;
     line-height: 1;
+    padding: 0 4px;
 
-    &:hover {
-      color: #fff;
+    &:hover { color: #fff; }
+  }
+
+  // Scrollable message area
+  &__messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+
+    &::-webkit-scrollbar { width: 4px; }
+    &::-webkit-scrollbar-thumb { background: rgba(167, 139, 250, 0.25); border-radius: 4px; }
+  }
+
+  &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.82rem;
+    text-align: center;
+    padding: 2rem 1rem;
+
+    span { font-size: 2rem; }
+    p { margin: 0; line-height: 1.5; }
+  }
+
+  &__bubble {
+    padding: 0.55rem 0.85rem;
+    border-radius: 12px;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    max-width: 90%;
+    word-break: break-word;
+
+    &--user {
+      align-self: flex-end;
+      background: rgba(167, 139, 250, 0.18);
+      color: #ddd6fe;
+      border-bottom-right-radius: 4px;
+    }
+
+    &--agent {
+      align-self: flex-start;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      border-bottom-left-radius: 4px;
+    }
+
+    // Typing indicator
+    &--typing {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+      padding: 0.6rem 0.85rem;
+
+      span {
+        width: 6px;
+        height: 6px;
+        background: #a78bfa;
+        border-radius: 50%;
+        animation: typingDot 1.2s infinite ease-in-out;
+
+        &:nth-child(2) { animation-delay: 0.2s; }
+        &:nth-child(3) { animation-delay: 0.4s; }
+      }
     }
   }
 
-  &__body {
-    padding: 1rem;
+  // Input area at the bottom
+  &__input-area {
+    flex-shrink: 0;
+    padding: 0.75rem;
+    border-top: 1px solid rgba(167, 139, 250, 0.15);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  &__desc {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin: 0;
-    line-height: 1.4;
-  }
-
-  &__input-group {
-    position: relative;
-    display: flex;
-    align-items: flex-start;
+    gap: 0.5rem;
   }
 
   &__input {
-    flex: 1;
+    width: 100%;
     background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
-    padding: 0.5rem 2.5rem 0.5rem 0.75rem;
+    padding: 0.55rem 0.75rem;
     color: #fff;
     font-family: inherit;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     resize: none;
-    height: 80px;
+    box-sizing: border-box;
+    line-height: 1.4;
 
     &:focus {
       outline: none;
       border-color: #a78bfa;
     }
+
+    &::placeholder { color: var(--text-muted); }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
   }
 
   &__mic {
-    position: absolute;
-    right: 5px;
-    top: 5px;
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-size: 1.1rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    font-size: 1rem;
     cursor: pointer;
-    padding: 4px;
-    border-radius: 50%;
     transition: all 0.2s;
+    flex-shrink: 0;
 
-    &:hover {
-      color: #a78bfa;
-      background: rgba(255, 255, 255, 0.05);
-    }
+    &:hover { background: rgba(167, 139, 250, 0.1); border-color: #a78bfa; }
 
     &--active {
-      color: #ef4444;
+      background: rgba(239, 68, 68, 0.15);
+      border-color: #ef4444;
       animation: pulseMic 1.5s infinite;
     }
   }
 
-  &__apply {
-    background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  &__send {
+    flex: 1;
+    min-width: 80px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.78rem;
     border: none;
-    width: 100%;
-    margin-top: 0.5rem;
+
+    &--ask {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(167,139,250,0.3);
+      color: #a78bfa;
+
+      &:hover:not(:disabled) {
+        background: rgba(167,139,250,0.15);
+        border-color: #a78bfa;
+      }
+    }
+
+    &--design {
+      background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+      color: #fff;
+    }
   }
 }
 
-@keyframes slideUpIa {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+@keyframes typingDot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40%           { transform: scale(1);   opacity: 1; }
 }
 
 @keyframes pulseMic {
-  0% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.1); opacity: 0.7; }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(1);   opacity: 1; }
+  50%  { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1);   opacity: 1; }
 }

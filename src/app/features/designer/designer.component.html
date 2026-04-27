@@ -18,6 +18,9 @@
     </div>
 
     <div class="toolbar__actions">
+      <button class="toolbar__btn toolbar__btn--ia" (click)="toggleIaPanel()" [class.toolbar__btn--ia-active]="showIaPanel()">
+        ✨ IA
+      </button>
       <button class="toolbar__btn" (click)="openAddEdge()" [disabled]="graphNodes().length < 2">
         ↔ Conexión
       </button>
@@ -129,10 +132,66 @@
       </ngx-graph>
     </div>
 
+    <!-- ── IA Chat Sidebar ── -->
+    <aside class="designer__ia-chat" *ngIf="showIaPanel()">
+      <div class="ia-chat__header">
+        <span class="ia-chat__title">✨ Asistente IA</span>
+        <button class="ia-chat__close" (click)="toggleIaPanel()" title="Cerrar">×</button>
+      </div>
+
+      <div class="ia-chat__messages">
+        <div *ngIf="chatMessages().length === 0" class="ia-chat__empty">
+          <span>👋</span>
+          <p>Hola Admin, soy tu asistente de diseño.<br>¿En qué puedo ayudarte?</p>
+        </div>
+        <div *ngFor="let msg of chatMessages()" class="ia-chat__bubble"
+             [class.ia-chat__bubble--user]="msg.role === 'user'"
+             [class.ia-chat__bubble--agent]="msg.role === 'agent'">
+          {{ msg.text }}
+        </div>
+        <div *ngIf="isProcessingIa()" class="ia-chat__bubble ia-chat__bubble--agent ia-chat__bubble--typing">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <div class="ia-chat__input-area">
+        <textarea class="ia-chat__input"
+                  [ngModel]="iaQuestion()"
+                  (ngModelChange)="iaQuestion.set($event)"
+                  (keydown)="onIaKeydown($event)"
+                  placeholder="Pregunta algo o describí un cambio al diagrama..."
+                  rows="2">
+        </textarea>
+        <div class="ia-chat__actions">
+          <button class="ia-chat__mic"
+                  (click)="toggleIaVoice()"
+                  [class.ia-chat__mic--active]="isListeningIa()"
+                  title="Hablar">
+            🎤
+          </button>
+          <button class="btn-secondary ia-chat__send ia-chat__send--ask"
+                  (click)="sendIaMessage()"
+                  [disabled]="!iaQuestion().trim() || isProcessingIa()"
+                  title="Hacerle una pregunta al agente">
+            💬 Preguntar
+          </button>
+          <button class="btn-primary ia-chat__send ia-chat__send--design"
+                  (click)="sendDesignFlow()"
+                  [disabled]="!iaQuestion().trim() || isProcessingIa()"
+                  title="Aplicar instrucción al diagrama">
+            ✨ Diseñar
+          </button>
+        </div>
+      </div>
+    </aside>
+
     <!-- ── Right panel: properties ── -->
     <aside class="designer__right" *ngIf="selectedNode()">
       <div class="panel-section">
-        <p class="panel-section__title">Propiedades del nodo</p>
+        <div class="panel-section__header">
+          <p class="panel-section__title">Propiedades del nodo</p>
+          <button class="panel-section__close" (click)="selectedNode.set(null)" title="Cerrar">×</button>
+        </div>
 
         <div class="form-field">
           <label class="form-field__label">Etiqueta</label>
@@ -277,41 +336,6 @@
           <span *ngIf="resolvingEmail()" class="spinner spinner--sm"></span>
         </button>
       </div>
-    </div>
-  </div>
-
-  <!-- ── Floating IA Assistant Panel ── -->
-  <button class="ia-toggle-btn" (click)="toggleIaPanel()" [class.ia-toggle-btn--active]="showIaPanel()">
-    ✨ IA
-  </button>
-
-  <div class="ia-panel" *ngIf="showIaPanel()">
-    <div class="ia-panel__header">
-      <h4>Asistente IA</h4>
-      <button class="ia-panel__close" (click)="toggleIaPanel()">×</button>
-    </div>
-    <div class="ia-panel__body">
-      <p class="ia-panel__desc">Describe los cambios que deseas hacer en el diagrama. Yo los dibujaré por ti.</p>
-      
-      <div class="ia-panel__input-group">
-        <textarea class="ia-panel__input" 
-                  [ngModel]="iaInstruction()" 
-                  (ngModelChange)="iaInstruction.set($event)" 
-                  placeholder="Ej: Agrega una tarea llamada 'Revisar' en Dpto Legal..."></textarea>
-        <button class="ia-panel__mic" 
-                (click)="toggleIaVoice()" 
-                [class.ia-panel__mic--active]="isListeningIa()" 
-                title="Dictar por voz">
-          🎤
-        </button>
-      </div>
-
-      <button class="btn-primary ia-panel__apply" 
-              (click)="aplicarIa()" 
-              [disabled]="!iaInstruction().trim() || isProcessingIa()">
-        <span *ngIf="!isProcessingIa()">Aplicar</span>
-        <span *ngIf="isProcessingIa()" class="spinner spinner--sm"></span>
-      </button>
     </div>
   </div>
 

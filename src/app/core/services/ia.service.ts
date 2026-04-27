@@ -29,6 +29,10 @@ export class IaService {
   }
 
   designFlow(request: IaDesignerRequest): Observable<any> {
-    return this.http.post<any>(`${this.apiUrl}/desing-flow`, request);
+    return this.http.post<any>(`${this.apiUrl}/design-flow`, request);
+  }
+
+  designerAgent(question: string): Observable<{ response: string }> {
+    return this.http.post<{ response: string }>(`${this.apiUrl}/designer-agent`, { question });
   }
 }
