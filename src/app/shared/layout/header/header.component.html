@@ -1,0 +1,16 @@
+<header class="header">
+  <button class="header__toggle" (click)="toggleSidebar.emit()" title="Toggle sidebar">
+    <span class="header__toggle-icon">☰</span>
+  </button>
+
+  <div class="header__spacer"></div>
+
+  <div class="header__user" *ngIf="user">
+    <div class="header__user-info">
+      <span class="header__user-name">{{ user.firstName }} {{ user.lastName }}</span>
+      <span class="header__user-role">{{ user.role }}</span>
+    </div>
+    <div class="header__avatar">{{ userInitials }}</div>
+    <button class="header__logout" (click)="logout()" title="Cerrar sesión">⏻</button>
+  </div>
+</header>

@@ -1,0 +1,125 @@
+.login-page {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+
+  &__brand {
+    flex: 1;
+    background: linear-gradient(135deg, #0d1b3e 0%, #1a1060 50%, #0d1b3e 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    position: relative;
+    overflow: hidden;
+
+    &::before {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(91, 110, 240, 0.15) 0%, transparent 70%);
+      top: -100px;
+      right: -100px;
+    }
+    &::after {
+      content: '';
+      position: absolute;
+      width: 300px;
+      height: 300px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(16, 217, 160, 0.1) 0%, transparent 70%);
+      bottom: -80px;
+      left: -80px;
+    }
+  }
+
+  &__brand-content {
+    position: relative;
+    z-index: 1;
+    max-width: 380px;
+  }
+
+  &__logo {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+  }
+
+  &__title {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #fff;
+    margin: 0 0 0.5rem;
+    letter-spacing: -1px;
+  }
+
+  &__subtitle {
+    font-size: 1rem;
+    color: rgba(255,255,255,0.6);
+    line-height: 1.6;
+    margin-bottom: 2.5rem;
+  }
+
+  &__features {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  &__feature {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: rgba(255,255,255,0.75);
+    font-size: 0.9rem;
+
+    &-icon { font-size: 1.1rem; }
+  }
+
+  &__form-panel {
+    width: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: var(--bg-primary);
+  }
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+
+  &__header {
+    margin-bottom: 2rem;
+  }
+
+  &__title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 0.25rem;
+  }
+
+  &__desc {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  &__form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  &__error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    color: #f87171;
+    font-size: 0.875rem;
+  }
+}

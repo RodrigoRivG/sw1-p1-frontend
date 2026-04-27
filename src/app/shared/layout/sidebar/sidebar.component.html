@@ -1,0 +1,20 @@
+<aside class="sidebar" [class.sidebar--collapsed]="collapsed">
+  <!-- Brand -->
+  <div class="sidebar__brand">
+    <span class="sidebar__brand-icon">⚙️</span>
+    <span class="sidebar__brand-name" *ngIf="!collapsed">PolicyFlow</span>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="sidebar__nav">
+    <a
+      *ngFor="let item of visibleItems"
+      class="sidebar__nav-item"
+      [routerLink]="item.route"
+      routerLinkActive="sidebar__nav-item--active"
+    >
+      <span class="sidebar__nav-icon">{{ item.icon }}</span>
+      <span class="sidebar__nav-label" *ngIf="!collapsed">{{ item.label }}</span>
+    </a>
+  </nav>
+</aside>

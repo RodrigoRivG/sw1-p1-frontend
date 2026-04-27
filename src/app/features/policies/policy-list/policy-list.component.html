@@ -1,0 +1,147 @@
+<div class="policy-list">
+
+  <!-- Header -->
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Políticas de Negocio</h1>
+      <p class="page-subtitle">Gestioná y diseñá las políticas de tu organización</p>
+    </div>
+    <button class="btn-primary" id="btn-new-policy" (click)="openDesigner()">
+      + Nueva política
+    </button>
+  </div>
+
+  <!-- Search bar -->
+  <div class="policy-list__toolbar">
+    <div class="search-box">
+      <span class="search-box__icon">🔍</span>
+      <input
+        class="search-box__input"
+        type="text"
+        placeholder="Buscar por nombre o descripción..."
+        id="input-search-policies"
+        (input)="onSearch($any($event.target).value)"
+      />
+    </div>
+    <span class="policy-list__count" *ngIf="!loading()">
+      {{ filteredPolicies().length }} política{{ filteredPolicies().length !== 1 ? 's' : '' }}
+    </span>
+  </div>
+
+  <!-- Success Message -->
+  <div class="policy-list__success" *ngIf="successMessage()">
+    ✅ {{ successMessage() }}
+  </div>
+
+  <!-- Error -->
+  <div class="policy-list__error" *ngIf="error()">
+    ⚠️ {{ error() }}
+    <button class="btn-retry" (click)="loadPolicies()">Reintentar</button>
+  </div>
+
+  <!-- Loading skeleton -->
+  <div class="policy-grid" *ngIf="loading()">
+    <div class="policy-card policy-card--skeleton" *ngFor="let i of [1,2,3,4,5,6]">
+      <div class="skeleton-bar skeleton-bar--title"></div>
+      <div class="skeleton-bar"></div>
+      <div class="skeleton-bar skeleton-bar--short"></div>
+      <div class="policy-card__footer">
+        <div class="skeleton-bar skeleton-bar--badge"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div class="policy-list__empty" *ngIf="!loading() && filteredPolicies().length === 0 && !error()">
+    <div class="policy-list__empty-icon">📋</div>
+    <p class="policy-list__empty-title">
+      {{ searchQuery() ? 'Sin resultados' : 'No hay políticas aún' }}
+    </p>
+    <p class="policy-list__empty-desc">
+      {{ searchQuery() ? 'Intentá con otro término de búsqueda' : 'Creá tu primera política para comenzar' }}
+    </p>
+    <button class="btn-primary" *ngIf="!searchQuery()" (click)="openDesigner()">
+      + Crear primera política
+    </button>
+  </div>
+
+  <!-- Policy grid -->
+  <div class="policy-grid" *ngIf="!loading() && filteredPolicies().length > 0">
+    <div
+      class="policy-card"
+      *ngFor="let policy of filteredPolicies(); trackBy: trackById"
+      (click)="openDesigner(policy.id)"
+      [id]="'policy-card-' + policy.id"
+    >
+      <!-- Card header -->
+      <div class="policy-card__header">
+        <h3 class="policy-card__name">{{ policy.name }}</h3>
+        <div class="policy-card__actions">
+          <button
+            *ngIf="isAdmin()"
+            class="policy-card__btn policy-card__btn--start"
+            (click)="openStartProcedureModal(policy.id, $event)"
+            title="Iniciar Trámite"
+          >
+            ▶ Iniciar
+          </button>
+          <button
+            class="policy-card__btn policy-card__btn--delete"
+            [id]="'btn-delete-' + policy.id"
+            (click)="deletePolicy(policy, $event)"
+            [disabled]="deletingId() === policy.id"
+            title="Eliminar"
+          >
+            {{ deletingId() === policy.id ? '⏳' : '🗑️' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <p class="policy-card__desc">
+        {{ policy.description || 'Sin descripción' }}
+      </p>
+
+      <!-- Footer -->
+      <div class="policy-card__footer">
+        <span [class]="statusClass(policy.status)">
+          {{ statusLabels[policy.status] ?? policy.status }}
+        </span>
+        <span class="policy-card__author" *ngIf="policy.createdBy">
+          👤 {{ policy.createdBy }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal para iniciar trámite -->
+<div class="modal-overlay" *ngIf="showStartProcedureModal()" (click)="closeStartProcedureModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h2>Iniciar Nuevo Trámite</h2>
+      <button class="close-btn" (click)="closeStartProcedureModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Nombre del Cliente *</label>
+        <input type="text" [value]="procedureForm().clientName" (input)="updateForm('clientName', $event)" placeholder="Ej. Juan Pérez">
+      </div>
+      <div class="form-group">
+        <label>Correo del Cliente *</label>
+        <input type="email" [value]="procedureForm().clientEmail" (input)="updateForm('clientEmail', $event)" placeholder="ejemplo@correo.com">
+      </div>
+      <div class="form-group">
+        <label>Información Adicional (Opcional)</label>
+        <textarea rows="3" [value]="procedureForm().clientDetails" (input)="updateForm('clientDetails', $event)" placeholder="Detalles extra..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel" (click)="closeStartProcedureModal()" [disabled]="submittingProcedure()">Cancelar</button>
+      <button class="btn-primary" (click)="submitProcedure()" [disabled]="submittingProcedure() || !procedureForm().clientName.trim() || !procedureForm().clientEmail.trim()">
+        {{ submittingProcedure() ? 'Iniciando...' : 'Iniciar Trámite' }}
+      </button>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,16 @@
+<div class="shell" [class.shell--collapsed]="sidebarCollapsed()">
+  <app-sidebar
+    [collapsed]="sidebarCollapsed()"
+    [role]="authService.currentUser()?.role ?? 'employee'"
+  />
+
+  <div class="shell__body">
+    <app-header
+      [user]="authService.currentUser()"
+      (toggleSidebar)="toggleSidebar()"
+    />
+    <main class="shell__main">
+      <router-outlet />
+    </main>
+  </div>
+</div>

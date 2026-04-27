@@ -1,0 +1,34 @@
+.shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg-primary);
+
+  &__body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: margin-left 0.3s ease;
+  }
+
+  &__main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem;
+    animation: fadeIn 0.3s ease;
+
+    // El designer ocupa todo el espacio sin padding
+    &:has(app-designer) {
+      padding: 0;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

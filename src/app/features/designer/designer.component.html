@@ -1,0 +1,318 @@
+<div class="designer">
+
+  <!-- ── Loading overlay ── -->
+  <div class="designer__loading" *ngIf="loading()">
+    <div class="spinner"></div>
+    <span>Cargando política...</span>
+  </div>
+
+  <!-- ── Top toolbar ── -->
+  <div class="designer__toolbar">
+    <a class="toolbar__back" [routerLink]="['/admin/policies']" title="Volver">← Volver</a>
+
+    <div class="toolbar__meta">
+      <input class="toolbar__name" [ngModel]="policyName()" (ngModelChange)="policyName.set($event)"
+        placeholder="Nombre de la política" />
+      <input class="toolbar__desc" [ngModel]="policyDesc()" (ngModelChange)="policyDesc.set($event)"
+        placeholder="Descripción..." />
+    </div>
+
+    <div class="toolbar__actions">
+      <button class="toolbar__btn" (click)="openAddEdge()" [disabled]="graphNodes().length < 2">
+        ↔ Conexión
+      </button>
+      <button class="toolbar__btn" (click)="openAddSwimlane()">
+        + Swimlane
+      </button>
+      <button class="btn-primary toolbar__save" (click)="save()" [disabled]="!canSave">
+        <span *ngIf="!saving()">💾 Guardar</span>
+        <span *ngIf="saving()" class="spinner spinner--sm"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Main area ── -->
+  <div class="designer__body">
+
+    <!-- ── Left panel: palette + swimlanes ── -->
+    <aside class="designer__left">
+
+      <div class="panel-section">
+        <p class="panel-section__title">Tipos de nodo</p>
+        <button *ngFor="let item of palette" class="palette-item" [style.--node-color]="item.color"
+          (click)="openAddNode(item.type)" [id]="'palette-' + item.type">
+          <span class="palette-item__icon">{{ item.icon }}</span>
+          <span class="palette-item__label">{{ item.label }}</span>
+        </button>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-section__header">
+          <p class="panel-section__title">Swimlanes</p>
+          <button class="panel-section__add" (click)="openAddSwimlane()">+</button>
+        </div>
+        <div class="swimlane-item" *ngFor="let sl of swimlanes()">
+          <span class="swimlane-item__dot" [style.background]="sl.color"></span>
+          <span class="swimlane-item__name">{{ sl.label }}</span>
+          <button class="swimlane-item__del" (click)="deleteSwimlane(sl.id)">×</button>
+        </div>
+        <p class="panel-section__empty" *ngIf="swimlanes().length === 0">Sin swimlanes</p>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-section__header">
+          <p class="panel-section__title">Colaboradores</p>
+          <button class="panel-section__add" (click)="openAddCollaborator()">+</button>
+        </div>
+        <div class="swimlane-item" *ngFor="let col of collaborators()">
+          <span class="swimlane-item__dot" style="background: #a78bfa"></span>
+          <span class="swimlane-item__name">{{ col }}</span>
+          <button class="swimlane-item__del" (click)="removeCollaborator(col)">×</button>
+        </div>
+        <p class="panel-section__empty" *ngIf="collaborators().length === 0">Sin colaboradores</p>
+      </div>
+
+    </aside>
+
+    <!-- ── Canvas ── -->
+    <div class="designer__canvas">
+      <div class="canvas__empty" *ngIf="graphNodes().length === 0 && !loading()">
+        <div class="canvas__empty-icon">🎨</div>
+        <p>Seleccioná un tipo de nodo del panel izquierdo para comenzar</p>
+      </div>
+
+      <ngx-graph *ngIf="graphNodes().length > 0" class="ngx-graph-canvas" [nodes]="graphNodes()" [links]="graphLinks()"
+        [clusters]="clusters()" layout="dagreCluster" [layoutSettings]="layoutSettings" [draggingEnabled]="true"
+        [enableZoom]="true" [autoCenter]="true" [update$]="update$" [center$]="center$" [zoomToFit$]="zoomToFit$"
+        (select)="onNodeSelect($event)">
+        <!-- Node template -->
+        <ng-template #nodeTemplate let-node>
+          <svg:g class="graph-node" [class.graph-node--selected]="selectedNode()?.id === node.id">
+            <svg:rect x="0" y="0" rx="10" ry="10" [attr.width]="node.dimension?.width || 160"
+              [attr.height]="node.dimension?.height || 52" [attr.fill]="nodeColor(node.data?.type) + '22'"
+              [attr.stroke]="nodeColor(node.data?.type)" stroke-width="2" />
+            <svg:text [attr.x]="(node.dimension?.width || 160) / 2" y="20" text-anchor="middle"
+              [attr.fill]="nodeColor(node.data?.type)" font-size="14">{{ nodeIcon(node.data?.type) }}</svg:text>
+            <svg:text [attr.x]="(node.dimension?.width || 160) / 2" y="38" text-anchor="middle" fill="#e8eeff"
+              font-size="11" font-family="Inter, sans-serif">{{ node.data?.label || node.label }}</svg:text>
+          </svg:g>
+        </ng-template>
+
+        <!-- Link template -->
+        <ng-template #linkTemplate let-link>
+          <svg:g class="graph-edge">
+            <svg:path class="graph-edge__line" [attr.d]="link.line" stroke="#4a5980" stroke-width="1.5" fill="none"
+              marker-end="url(#arrow)" />
+            <svg:text *ngIf="link.label" [attr.transform]="link.textTransform" text-anchor="middle" fill="#8b9cc8"
+              font-size="10">{{ link.label }}</svg:text>
+          </svg:g>
+        </ng-template>
+
+        <!-- Cluster / Swimlane template -->
+        <ng-template #clusterTemplate let-cluster>
+          <svg:g class="graph-cluster">
+            <svg:rect x="0" y="0" rx="12" ry="12" [attr.width]="cluster.dimension?.width"
+              [attr.height]="cluster.dimension?.height" [attr.fill]="(cluster.data?.color || '#5b6ef0') + '12'"
+              [attr.stroke]="cluster.data?.color || '#5b6ef0'" stroke-width="1.5" stroke-dasharray="6 3" />
+            <svg:text x="12" y="22" [attr.fill]="cluster.data?.color || '#5b6ef0'" font-size="12" font-weight="600"
+              font-family="Inter, sans-serif">{{ cluster.label }}</svg:text>
+          </svg:g>
+        </ng-template>
+
+        <!-- Arrow marker -->
+        <ng-template #defsTemplate>
+          <svg:marker id="arrow" markerWidth="8" markerHeight="8" refX="8" refY="4" orient="auto">
+            <svg:path d="M0,0 L8,4 L0,8 L2,4 Z" fill="#4a5980" />
+          </svg:marker>
+        </ng-template>
+
+      </ngx-graph>
+    </div>
+
+    <!-- ── Right panel: properties ── -->
+    <aside class="designer__right" *ngIf="selectedNode()">
+      <div class="panel-section">
+        <p class="panel-section__title">Propiedades del nodo</p>
+
+        <div class="form-field">
+          <label class="form-field__label">Etiqueta</label>
+          <input class="form-field__input" [ngModel]="selectedNode()?.data?.label"
+            (ngModelChange)="setSelectedProp('label', $event)" />
+        </div>
+
+        <div class="form-field">
+          <label class="form-field__label">Tipo</label>
+          <input class="form-field__input" [value]="selectedNode()?.data?.type" disabled />
+        </div>
+
+        <div class="form-field">
+          <label class="form-field__label">Swimlane</label>
+          <select class="form-field__input" [ngModel]="selectedNode()?.data?.departmentId"
+            (ngModelChange)="setSelectedProp('departmentId', $event)">
+            <option *ngFor="let sl of swimlanes()" [value]="sl.id">{{ sl.label }}</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label class="form-field__label">Email del funcionario</label>
+          <input class="form-field__input"
+                 type="email"
+                 placeholder="funcionario@empresa.com"
+                 [ngModel]="selectedNodeEmail()"
+                 (ngModelChange)="selectedNodeEmail.set($event); emailError.set(null)"
+                 [disabled]="resolvingEmail()" />
+          <span class="form-field__hint" *ngIf="selectedNode()?.data?.userId && !emailError()">
+            ✅ ID: {{ selectedNode()?.data?.userId }}
+          </span>
+          <span class="form-field__error" *ngIf="emailError()">
+            ⚠️ {{ emailError() }}
+          </span>
+        </div>
+
+        <div class="props__actions">
+          <button class="btn-primary" style="flex:1"
+                  (click)="resolveEmailAndUpdate()"
+                  [disabled]="resolvingEmail()">
+            <span *ngIf="!resolvingEmail()">Aplicar</span>
+            <span *ngIf="resolvingEmail()" class="spinner spinner--sm"></span>
+          </button>
+          <button class="props__delete-btn" (click)="deleteNode()">🗑️ Eliminar</button>
+        </div>
+      </div>
+    </aside>
+
+  </div><!-- /body -->
+
+  <!-- ── Modal: Add Node ── -->
+  <div class="modal-overlay" *ngIf="showAddNode()" (click)="showAddNode.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3 class="modal__title">Agregar nodo — {{ getPaletteLabel(addingNodeType()) }}</h3>
+
+      <div class="form-field">
+        <label class="form-field__label">Etiqueta *</label>
+        <input class="form-field__input" [(ngModel)]="newNodeLabel" placeholder="Nombre de la actividad" autofocus />
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">Swimlane</label>
+        <select class="form-field__input" [(ngModel)]="newNodeSwimlane">
+          <option *ngFor="let sl of swimlanes()" [value]="sl.id">{{ sl.label }}</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">Usuario asignado (ID)</label>
+        <input class="form-field__input" [(ngModel)]="newNodeUser" placeholder="Opcional" />
+      </div>
+
+      <div class="modal__footer">
+        <button class="modal__cancel" (click)="showAddNode.set(false)">Cancelar</button>
+        <button class="btn-primary" (click)="confirmAddNode()" [disabled]="!newNodeLabel.trim()">Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Add Edge ── -->
+  <div class="modal-overlay" *ngIf="showAddEdge()" (click)="showAddEdge.set(false)">
+    <div class="modal" (click)="$event.stopPropagation()">
+      <h3 class="modal__title">Agregar conexión</h3>
+
+      <div class="form-field">
+        <label class="form-field__label">Nodo origen *</label>
+        <select class="form-field__input" [ngModel]="edgeSource()" (ngModelChange)="edgeSource.set($event)">
+          <option *ngFor="let n of graphNodes()" [value]="n.id">{{ n.data?.label || n.id }}</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">Nodo destino *</label>
+        <select class="form-field__input" [ngModel]="edgeTarget()" (ngModelChange)="edgeTarget.set($event)">
+          <option *ngFor="let n of graphNodes()" [value]="n.id">{{ n.data?.label || n.id }}</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">Tipo</label>
+        <select class="form-field__input" [ngModel]="edgeType()" (ngModelChange)="edgeType.set($event)">
+          <option value="sequential">Secuencial</option>
+          <option value="conditional">Condicional</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label">Etiqueta (opcional)</label>
+        <input class="form-field__input" [ngModel]="edgeLabel()" (ngModelChange)="edgeLabel.set($event)" placeholder="Ej: Si aprobado" />
+      </div>
+
+      <div class="modal__footer">
+        <button class="modal__cancel" (click)="showAddEdge.set(false)">Cancelar</button>
+        <button class="btn-primary" (click)="confirmAddEdge()">Conectar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Add Swimlane ── -->
+  <div class="modal-overlay" *ngIf="showAddSwimlane()" (click)="showAddSwimlane.set(false)">
+    <div class="modal modal--sm" (click)="$event.stopPropagation()">
+      <h3 class="modal__title">Nueva swimlane</h3>
+      <div class="form-field">
+        <label class="form-field__label">Nombre del departamento *</label>
+        <input class="form-field__input" [(ngModel)]="newSwimlaneName" placeholder="Ej: Recursos Humanos" />
+      </div>
+      <div class="modal__footer">
+        <button class="modal__cancel" (click)="showAddSwimlane.set(false)">Cancelar</button>
+        <button class="btn-primary" (click)="confirmAddSwimlane()" [disabled]="!newSwimlaneName.trim()">Crear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Modal: Add Collaborator ── -->
+  <div class="modal-overlay" *ngIf="showAddCollaborator()" (click)="showAddCollaborator.set(false)">
+    <div class="modal modal--sm" (click)="$event.stopPropagation()">
+      <h3 class="modal__title">Agregar colaborador</h3>
+      <div class="form-field">
+        <label class="form-field__label">Email del usuario *</label>
+        <input class="form-field__input" type="email" [(ngModel)]="newCollaboratorEmail" placeholder="colaborador@empresa.com" [disabled]="resolvingEmail()" />
+        <span class="form-field__error" *ngIf="emailError()">⚠️ {{ emailError() }}</span>
+      </div>
+      <div class="modal__footer">
+        <button class="modal__cancel" (click)="showAddCollaborator.set(false)">Cancelar</button>
+        <button class="btn-primary" (click)="confirmAddCollaborator()" [disabled]="!newCollaboratorEmail.trim() || resolvingEmail()">
+          <span *ngIf="!resolvingEmail()">Agregar</span>
+          <span *ngIf="resolvingEmail()" class="spinner spinner--sm"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Floating IA Assistant Panel ── -->
+  <button class="ia-toggle-btn" (click)="toggleIaPanel()" [class.ia-toggle-btn--active]="showIaPanel()">
+    ✨ IA
+  </button>
+
+  <div class="ia-panel" *ngIf="showIaPanel()">
+    <div class="ia-panel__header">
+      <h4>Asistente IA</h4>
+      <button class="ia-panel__close" (click)="toggleIaPanel()">×</button>
+    </div>
+    <div class="ia-panel__body">
+      <p class="ia-panel__desc">Describe los cambios que deseas hacer en el diagrama. Yo los dibujaré por ti.</p>
+      
+      <div class="ia-panel__input-group">
+        <textarea class="ia-panel__input" 
+                  [ngModel]="iaInstruction()" 
+                  (ngModelChange)="iaInstruction.set($event)" 
+                  placeholder="Ej: Agrega una tarea llamada 'Revisar' en Dpto Legal..."></textarea>
+        <button class="ia-panel__mic" 
+                (click)="toggleIaVoice()" 
+                [class.ia-panel__mic--active]="isListeningIa()" 
+                title="Dictar por voz">
+          🎤
+        </button>
+      </div>
+
+      <button class="btn-primary ia-panel__apply" 
+              (click)="aplicarIa()" 
+              [disabled]="!iaInstruction().trim() || isProcessingIa()">
+        <span *ngIf="!isProcessingIa()">Aplicar</span>
+        <span *ngIf="isProcessingIa()" class="spinner spinner--sm"></span>
+      </button>
+    </div>
+  </div>
+
+</div>
