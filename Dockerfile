@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copiamos solo package.json y package-lock.json primero para aprovechar el caché de Docker
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copiamos el resto del código y generamos el build de producción
 COPY . .
