@@ -1,4 +1,4 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:8080/api'
+  apiUrl: 'https://sw1-p1-backend2-123084394988.southamerica-east1.run.app/api'
 };

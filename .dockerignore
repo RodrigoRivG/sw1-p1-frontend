@@ -1,0 +1,8 @@
+node_modules
+dist
+.angular
+.git
+.vscode
+.editorconfig
+backup_designer
+README.md
