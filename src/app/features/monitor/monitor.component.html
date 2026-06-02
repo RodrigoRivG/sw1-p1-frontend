@@ -3,7 +3,11 @@
     <div class="header-content">
       <div class="title-section">
         <div class="icon-box">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m9 11 3 3L22 4" />
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+          </svg>
         </div>
         <div>
           <h1>Bandeja de Tareas</h1>
@@ -45,7 +49,14 @@
         <div class="card-body">
           <h3>{{ task.nodeLabel || task.nodeId }}</h3>
           <div class="procedure-info">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
             <span>Trámite: {{ task.procedureDetails?.clientName || task.procedureId }}</span>
           </div>
         </div>
@@ -68,7 +79,11 @@
         <div class="card-body">
           <h3>{{ task.nodeLabel || task.nodeId }}</h3>
           <div class="procedure-info">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
             <span>Trámite: {{ task.procedureDetails?.clientName || task.procedureId }}</span>
           </div>
         </div>
@@ -91,7 +106,11 @@
         <div class="card-body">
           <h3 class="completed-title">{{ task.nodeLabel || task.nodeId }}</h3>
           <div class="procedure-info">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+            </svg>
             <span>Trámite: {{ task.procedureDetails?.clientName || task.procedureId }}</span>
           </div>
           <div class="report-box" *ngIf="task.report?.observation">
@@ -106,7 +125,7 @@
 
 <!-- Modal para completar tarea -->
 <div class="modal-overlay" *ngIf="selectedTask()" (click)="closeModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
+  <div class="modal-content" [class.modal-content--wide]="formElements().length > 0" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <h2>Completar Tarea</h2>
       <button class="close-btn" (click)="closeModal()">✕</button>
@@ -117,49 +136,69 @@
         <strong>Trámite:</strong> {{ selectedTask()?.procedureDetails?.clientName || selectedTask()?.procedureId }}
       </div>
 
+      <!-- Custom Form Canvas if defined -->
+      <div class="form-canvas-container" *ngIf="formElements().length > 0">
+        <label class="form-canvas-label">Formulario de la Actividad</label>
+        <div class="form-viewer-canvas" [style.width.px]="600" [style.height.px]="400">
+          <div class="form-viewer-canvas__grid"></div>
+          
+          <div *ngFor="let el of formElements()" 
+               [class.fd-el]="true"
+               [class.fd-el--label]="el.type === 'label'"
+               [class.fd-el--input]="el.type === 'input'"
+               [style.left.px]="el.x"
+               [style.top.px]="el.y">
+            
+            <!-- Label Element -->
+            <span *ngIf="el.type === 'label'" class="fd-el__label-text">{{ el.text }}</span>
+            
+            <!-- Input Element -->
+            <div *ngIf="el.type === 'input'" class="fd-el__input-container">
+              <input class="form-canvas-input" type="text" [placeholder]="el.text" [(ngModel)]="formValues[el.id]" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- IA Assistant Section -->
       <div class="ia-section">
         <div class="ia-header">
           <label>Borrador / Dictado (IA)</label>
-          <button 
-            class="mic-btn" 
-            [class.recording]="isRecording()" 
-            (click)="toggleRecording()"
-            title="Dictar por voz"
-          >
-            <svg *ngIf="!isRecording()" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" x2="12" y1="19" y2="22"></line></svg>
-            <svg *ngIf="isRecording()" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="10"></circle></svg>
+          <button class="mic-btn" [class.recording]="isRecording()" (click)="toggleRecording()" title="Dictar por voz">
+            <svg *ngIf="!isRecording()" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"></path>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+              <line x1="12" x2="12" y1="19" y2="22"></line>
+            </svg>
+            <svg *ngIf="isRecording()" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+              fill="currentColor" stroke="none">
+              <circle cx="12" cy="12" r="10"></circle>
+            </svg>
           </button>
         </div>
-        <textarea 
-          [(ngModel)]="draftDescription" 
-          placeholder="Escribí o dictá notas rápidas sobre lo que hiciste..."
-          rows="3"
-          class="draft-textarea">
+        <textarea [(ngModel)]="draftDescription" placeholder="Escribí o dictá notas rápidas sobre lo que hiciste..."
+          rows="3" class="draft-textarea">
         </textarea>
-        <button 
-          class="btn-ia-generate" 
-          (click)="generateIaReport()" 
-          [disabled]="isGeneratingIa() || !draftDescription().trim()"
-        >
-          <span class="ia-icon">✨</span> 
+        <button class="btn-ia-generate" (click)="generateIaReport()"
+          [disabled]="isGeneratingIa() || !draftDescription().trim()">
+          <span class="ia-icon">✨</span>
           {{ isGeneratingIa() ? 'Generando reporte...' : 'Generar Reporte Formal' }}
         </button>
       </div>
 
-      <div class="form-group">
+      <!-- Observations Section (Only when no form is defined) -->
+      <div class="form-group" *ngIf="formElements().length === 0">
         <label>Informe Final (Editable)</label>
-        <textarea 
-          [(ngModel)]="observation" 
-          placeholder="El reporte generado por IA aparecerá aquí, o podés escribirlo manualmente..."
-          rows="4"
+        <textarea [(ngModel)]="observation"
+          placeholder="El reporte generado por IA aparecerá aquí, o podés escribirlo manualmente..." rows="4"
           class="final-textarea">
         </textarea>
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn-cancel" (click)="closeModal()" [disabled]="completing()">Cancelar</button>
-      <button class="btn-primary" (click)="completeTask()" [disabled]="completing() || !observation().trim()">
+      <button class="btn-primary" (click)="completeTask()" [disabled]="completing() || !isFormValid()">
         {{ completing() ? 'Enviando...' : 'Completar Tarea' }}
       </button>
     </div>

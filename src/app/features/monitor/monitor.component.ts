@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { TaskService } from '../../core/services/task.service';
 import { ProcedureService } from '../../core/services/procedure.service';
 import { IaService } from '../../core/services/ia.service';
+import { PolicyService } from '../../core/services/policy.service';
 import { Task, TaskStatus, Procedure } from '../../core/models';
 
 type TabType = 'pending' | 'in_progress' | 'completed';
@@ -23,10 +24,16 @@ export class MonitorComponent implements OnInit {
   private taskSvc = inject(TaskService);
   private procSvc = inject(ProcedureService);
   private iaSvc = inject(IaService);
+  private policySvc = inject(PolicyService);
 
   activeTab = signal<TabType>('pending');
   tasks = signal<TaskViewModel[]>([]);
   loading = signal<boolean>(true);
+
+  // Form State
+  formElements = signal<any[]>([]);
+  formValues: Record<string, string> = {};
+  activeMicFieldId: string | null = null;
 
   // Modal State
   selectedTask = signal<TaskViewModel | null>(null);
@@ -63,11 +70,11 @@ export class MonitorComponent implements OnInit {
   private loadProcedureDetails(tasks: Task[]): void {
     // Unique procedure IDs
     const procIds = Array.from(new Set(tasks.map(t => t.procedureId)));
-    
+
     procIds.forEach(procId => {
       this.procSvc.getById(procId).subscribe({
         next: (proc) => {
-          this.tasks.update(list => list.map(t => 
+          this.tasks.update(list => list.map(t =>
             t.procedureId === procId ? { ...t, procedureDetails: proc } : t
           ));
         }
@@ -82,12 +89,35 @@ export class MonitorComponent implements OnInit {
   openTaskModal(task: TaskViewModel): void {
     // Only pending or in_progress tasks can be completed
     if (task.status === 'completed') return;
-    
+
     this.selectedTask.set(task);
     this.observation.set('');
     this.draftDescription.set('');
     this.isRecording.set(false);
     this.isGeneratingIa.set(false);
+
+    // Load form fields from policy if exists
+    this.formElements.set([]);
+    this.formValues = {};
+
+    const policyId = task.procedureDetails?.policyId;
+    if (policyId) {
+      this.policySvc.getById(policyId).subscribe({
+        next: (policy) => {
+          const nodes = (policy.diagram?.['nodes'] as any[]) || [];
+          const matchedNode = nodes.find(n => n.id === task.nodeId);
+          if (matchedNode?.data?.formFields?.length > 0) {
+            this.formElements.set(matchedNode.data.formFields);
+            matchedNode.data.formFields.forEach((fe: any) => {
+              if (fe.type === 'input') {
+                this.formValues[fe.id] = '';
+              }
+            });
+          }
+        },
+        error: (err) => console.error('Error loading policy for task form:', err)
+      });
+    }
   }
 
   closeModal(): void {
@@ -97,6 +127,9 @@ export class MonitorComponent implements OnInit {
     this.selectedTask.set(null);
     this.observation.set('');
     this.draftDescription.set('');
+    this.formElements.set([]);
+    this.formValues = {};
+    this.activeMicFieldId = null;
   }
 
   // --- IA & Speech Recognition Logic ---
@@ -124,7 +157,7 @@ export class MonitorComponent implements OnInit {
     this.recognition.onresult = (event: any) => {
       let finalTranscript = '';
       let interimTranscript = '';
-      
+
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
@@ -132,7 +165,7 @@ export class MonitorComponent implements OnInit {
           interimTranscript += event.results[i][0].transcript;
         }
       }
-      
+
       const currentDraft = this.draftDescription();
       // Solo sumamos el final a lo que ya había, y el interim lo mostramos como preview (opcional)
       // Para simplificar, actualizamos con el texto final + el progreso temporal.
@@ -162,6 +195,8 @@ export class MonitorComponent implements OnInit {
     this.isRecording.set(false);
   }
 
+
+
   generateIaReport(): void {
     const task = this.selectedTask();
     const draft = this.draftDescription().trim();
@@ -170,9 +205,48 @@ export class MonitorComponent implements OnInit {
     this.isGeneratingIa.set(true);
     const taskLabel = task.nodeLabel || task.nodeId;
 
-    this.iaSvc.generateReport({ taskLabel, description: draft }).subscribe({
+    const fields = this.formElements();
+    let descriptionToSend = draft;
+
+    if (fields.length > 0) {
+      const inputs = fields.filter(fe => fe.type === 'input');
+      const fieldsInstructions = inputs.map(i => `- ID: "${i.id}", Campo: "${i.text}"`).join('\n');
+      
+      descriptionToSend = `${draft}\n\n[INSTRUCCIÓN DE LA APLICACIÓN - IMPORTANTE: Analiza la descripción anterior y extrae los datos para llenar los siguientes campos del formulario:\n${fieldsInstructions}\n\nResponde ESTRICTAMENTE con un bloque JSON que contenga los pares clave-valor correspondientes, por ejemplo:\n\`\`\`json\n{\n${inputs.map(i => `  "${i.id}": "..."`).join(',\n')}\n}\n\`\`\`\nNo agregues explicaciones adicionales fuera de este bloque JSON.]`;
+    }
+
+    this.iaSvc.generateReport({ taskLabel, description: descriptionToSend }).subscribe({
       next: (res) => {
-        this.observation.set(res.report);
+        if (fields.length > 0) {
+          const jsonMatch = res.report.match(/```json\s*([\s\S]*?)\s*```/) || res.report.match(/({[\s\S]*?})/);
+          let parsed: Record<string, string> = {};
+          if (jsonMatch) {
+            try {
+              parsed = JSON.parse(jsonMatch[1]);
+            } catch (e) {
+              console.error('Error parsing JSON from IA report:', e);
+            }
+          } else {
+            try {
+              parsed = JSON.parse(res.report.trim());
+            } catch (e) {
+              console.error('Error parsing direct JSON from IA report:', e);
+            }
+          }
+
+          if (parsed && Object.keys(parsed).length > 0) {
+            Object.keys(parsed).forEach(key => {
+              if (this.formValues.hasOwnProperty(key)) {
+                this.formValues[key] = parsed[key];
+              }
+            });
+            this.formValues = { ...this.formValues };
+          } else {
+            alert('La IA generó una respuesta pero no se pudieron extraer los campos del formulario. Asegúrate de que el borrador contenga información relevante para los campos.');
+          }
+        } else {
+          this.observation.set(res.report);
+        }
         this.isGeneratingIa.set(false);
       },
       error: () => {
@@ -182,13 +256,44 @@ export class MonitorComponent implements OnInit {
     });
   }
 
+  isFormValid(): boolean {
+    const fields = this.formElements();
+    if (fields.length === 0) {
+      return this.observation().trim().length > 0;
+    }
+    return fields.filter(fe => fe.type === 'input')
+                 .every(fe => (this.formValues[fe.id] || '').trim().length > 0);
+  }
+
   completeTask(): void {
     const task = this.selectedTask();
-    if (!task || !this.observation().trim()) return;
+    if (!task) return;
+
+    let finalObservation = this.observation().trim();
+
+    // Format form values if form fields exist
+    const fields = this.formElements();
+    if (fields.length > 0) {
+      let formSummary = '📋 RESPUESTAS DEL FORMULARIO:\n';
+      fields.forEach(fe => {
+        if (fe.type === 'input') {
+          const val = (this.formValues[fe.id] || '').trim() || '(Vacío)';
+          formSummary += `- ${fe.text}: ${val}\n`;
+        }
+      });
+
+      if (finalObservation) {
+        finalObservation = `${formSummary}\n✍️ OBSERVACIONES ADICIONALES:\n${finalObservation}`;
+      } else {
+        finalObservation = formSummary;
+      }
+    }
+
+    if (!finalObservation) return;
 
     this.completing.set(true);
     this.taskSvc.completeTask(task.id, {
-      report: { observation: this.observation().trim() }
+      report: { observation: finalObservation }
     }).subscribe({
       next: (updatedTask) => {
         this.completing.set(false);

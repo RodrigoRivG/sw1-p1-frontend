@@ -60,11 +60,10 @@
   // Canvas
   &__canvas {
     flex: 1;
-    position: relative;
-    overflow: hidden;
-    background:
-      radial-gradient(circle at 20% 20%, rgba(91, 110, 240, 0.04) 0%, transparent 50%),
-      var(--bg-primary);
+    overflow: hidden; // scroll is handled by .canvas-scroll inside
+    background: #f1f5f9;
+    display: flex;
+    flex-direction: column;
   }
 
   // Right panel
@@ -156,6 +155,18 @@
     align-items: center;
   }
 
+  &__hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    padding: 0.4rem 0.75rem;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
   &__btn {
     background: var(--bg-elevated);
     border: 1px solid var(--border-color);
@@ -238,7 +249,9 @@
     border-radius: 4px;
     transition: color 0.15s;
 
-    &:hover { color: #fff; }
+    &:hover {
+      color: #fff;
+    }
   }
 
   // When title is inside a header row, remove its bottom margin
@@ -273,6 +286,12 @@
   &:hover {
     background: var(--bg-elevated);
     color: var(--node-color, var(--accent-primary));
+  }
+
+  &--active {
+    background: var(--accent-primary-muted) !important;
+    color: var(--node-color, var(--accent-primary)) !important;
+    border: 1px solid rgba(91, 110, 240, 0.3) !important;
   }
 
   &__icon {
@@ -355,37 +374,230 @@
   }
 }
 
-.ngx-graph-canvas {
-  width: 100% !important;
-  height: 100% !important;
+// ── Scrollable canvas wrapper ─────────────────────────────────────────
+.canvas-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  position: relative;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
 }
 
-// ngx-graph node override
-::ng-deep {
-  .graph-node {
+// ── The container that holds both layers at the same position ──────────
+.canvas-inner {
+  position: relative;
+  display: inline-block; // shrinks to its explicit width/height
+}
+
+// ── Swimlane HTML grid layer (behind JointJS paper) ───────────────────
+.sl-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none; // let mouse events pass through to JointJS
+
+  &__headers {
+    display: flex;
+    flex-direction: row;
+    height: 44px;
+  }
+
+  &__header-cell {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #1f2937;
+    border-left: none;
+    background-color: #ffffff;
+    box-sizing: border-box;
+    text-align: center;
+    border-top: 4px solid #1f2937;
+
+    &:first-child {
+      border-left: 2px solid #1f2937;
+    }
+  }
+
+  &__header-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1f2937;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-family: 'Inter', sans-serif;
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+  }
+
+  &__body-cell {
+    height: 100%;
+    border-right: 2px solid #1f2937;
+    box-sizing: border-box;
+    background-color: #ffffff;
+
+    &:first-child {
+      border-left: 2px solid #1f2937;
+    }
+  }
+}
+
+
+// ── JointJS paper (sits on top of .sl-grid, transparent) ──────────────
+.joint-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1; // on top of sl-grid
+
+  // The SVG element JointJS injects
+  svg {
+    display: block;
+    overflow: visible;
+  }
+
+  &.placement-mode {
+    cursor: crosshair !important;
+
+    svg {
+      cursor: crosshair !important;
+    }
+  }
+
+  &.connection-mode {
+    cursor: crosshair !important;
+
+    svg {
+      cursor: crosshair !important;
+    }
+
+    .joint-element {
+      cursor: crosshair !important;
+
+      &:hover .body {
+        stroke: var(--accent-primary, #5b6ef0) !important;
+        stroke-width: 2px !important;
+      }
+    }
+  }
+
+  &:not(.connection-mode) {
+    .joint-element {
+      cursor: grab !important;
+
+      &:active {
+        cursor: grabbing !important;
+      }
+    }
+  }
+
+  .joint-link .connection {
+    stroke: #374151;
+    stroke-width: 1.5;
+  }
+
+  .joint-link .connection-wrap {
+    stroke: transparent;
+    stroke-width: 14;
     cursor: pointer;
-    transition: opacity 0.15s;
   }
 
-  .graph-node:hover rect {
-    opacity: 0.85;
+  .joint-link .marker-target {
+    fill: #374151;
+    stroke: #374151;
+  }
+}
+
+// ── Placement Mode Banner ───────────────────────────────────────────────
+.placement-banner {
+  background: linear-gradient(135deg, #111827, #030712);
+  border-bottom: 2px solid var(--accent-primary);
+  padding: 0.6rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  animation: slideDown 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+
+  strong {
+    color: #38bdf8;
   }
 
-  .graph-node--selected rect {
-    stroke-width: 3 !important;
-    filter: drop-shadow(0 0 8px currentColor);
+  &__cancel {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #f87171;
+    padding: 0.3rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+    }
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
   }
 
-  .graph-edge__line {
-    transition: stroke 0.2s;
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// ── Empty hint (below canvas content, not overlapping) ────────────────
+.canvas-hint {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  pointer-events: none;
+
+  span {
+    font-size: 2rem;
   }
 
-  .graph-cluster rect {
-    transition: fill 0.2s;
-  }
-
-  .panning-rect {
-    fill: transparent !important;
+  p {
+    margin: 0;
+    text-align: center;
   }
 }
 
@@ -514,6 +726,25 @@
   }
 }
 
+// ── Connection Toolbar Button ──────────────────────────────────
+.toolbar__btn--connection {
+  border-color: rgba(91, 110, 240, 0.4);
+  color: var(--accent-primary, #5b6ef0);
+  font-weight: 600;
+
+  &:hover:not(:disabled) {
+    background: rgba(91, 110, 240, 0.1);
+    border-color: var(--accent-primary, #5b6ef0);
+    color: var(--accent-primary, #5b6ef0);
+  }
+
+  &.toolbar__btn--connection-active {
+    background: var(--accent-primary, #5b6ef0);
+    border-color: var(--accent-primary, #5b6ef0);
+    color: #fff;
+  }
+}
+
 // ── IA Chat Sidebar ────────────────────────────────────────────
 .designer__ia-chat {
   width: 300px;
@@ -527,8 +758,15 @@
 }
 
 @keyframes slideInIa {
-  from { opacity: 0; transform: translateX(20px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .ia-chat {
@@ -557,7 +795,9 @@
     line-height: 1;
     padding: 0 4px;
 
-    &:hover { color: #fff; }
+    &:hover {
+      color: #fff;
+    }
   }
 
   // Scrollable message area
@@ -569,8 +809,14 @@
     flex-direction: column;
     gap: 0.6rem;
 
-    &::-webkit-scrollbar { width: 4px; }
-    &::-webkit-scrollbar-thumb { background: rgba(167, 139, 250, 0.25); border-radius: 4px; }
+    &::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: rgba(167, 139, 250, 0.25);
+      border-radius: 4px;
+    }
   }
 
   &__empty {
@@ -585,8 +831,14 @@
     text-align: center;
     padding: 2rem 1rem;
 
-    span { font-size: 2rem; }
-    p { margin: 0; line-height: 1.5; }
+    span {
+      font-size: 2rem;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.5;
+    }
   }
 
   &__bubble {
@@ -625,8 +877,13 @@
         border-radius: 50%;
         animation: typingDot 1.2s infinite ease-in-out;
 
-        &:nth-child(2) { animation-delay: 0.2s; }
-        &:nth-child(3) { animation-delay: 0.4s; }
+        &:nth-child(2) {
+          animation-delay: 0.2s;
+        }
+
+        &:nth-child(3) {
+          animation-delay: 0.4s;
+        }
       }
     }
   }
@@ -659,7 +916,9 @@
       border-color: #a78bfa;
     }
 
-    &::placeholder { color: var(--text-muted); }
+    &::placeholder {
+      color: var(--text-muted);
+    }
   }
 
   &__actions {
@@ -679,7 +938,10 @@
     transition: all 0.2s;
     flex-shrink: 0;
 
-    &:hover { background: rgba(167, 139, 250, 0.1); border-color: #a78bfa; }
+    &:hover {
+      background: rgba(167, 139, 250, 0.1);
+      border-color: #a78bfa;
+    }
 
     &--active {
       background: rgba(239, 68, 68, 0.15);
@@ -696,12 +958,12 @@
     border: none;
 
     &--ask {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(167,139,250,0.3);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(167, 139, 250, 0.3);
       color: #a78bfa;
 
       &:hover:not(:disabled) {
-        background: rgba(167,139,250,0.15);
+        background: rgba(167, 139, 250, 0.15);
         border-color: #a78bfa;
       }
     }
@@ -714,12 +976,360 @@
 }
 
 @keyframes typingDot {
-  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-  40%           { transform: scale(1);   opacity: 1; }
+
+  0%,
+  80%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @keyframes pulseMic {
-  0%   { transform: scale(1);   opacity: 1; }
-  50%  { transform: scale(1.1); opacity: 0.7; }
-  100% { transform: scale(1);   opacity: 1; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  50% {
+    transform: scale(1.1);
+    opacity: 0.7;
+  }
+
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+:host ::ng-deep {
+
+  .joint-port>circle,
+  .joint-port>path {
+    display: none !important;
+  }
+}
+
+/* ── Form Designer Modal & Canvas Styles ── */
+.form-designer-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(7, 13, 26, 0.8);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.fd-window {
+  width: 95vw;
+  max-width: 1200px;
+  height: 85vh;
+  background: var(--bg-surface, #0f172a);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 16px;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleIn 0.2s ease;
+}
+
+.fd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.75rem;
+  border-bottom: 1px solid var(--border-color, #1e293b);
+  background: rgba(255, 255, 255, 0.02);
+
+  &__title {
+    h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--text-primary, #ffffff);
+    }
+    p {
+      margin: 0.25rem 0 0 0;
+      font-size: 0.85rem;
+      color: var(--text-secondary, #94a3b8);
+      strong {
+        color: var(--accent-primary, #5b6ef0);
+      }
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+}
+
+.fd-btn-cancel {
+  background: none;
+  border: 1px solid var(--border-color, #1e293b);
+  color: var(--text-secondary, #94a3b8);
+  border-radius: 8px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: var(--text-muted, #64748b);
+    color: var(--text-primary, #ffffff);
+  }
+}
+
+.fd-btn-save {
+  padding: 0.5rem 1.5rem;
+  font-size: 0.875rem;
+}
+
+.fd-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.fd-toolbox {
+  width: 250px;
+  border-right: 1px solid var(--border-color, #1e293b);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+
+  h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted, #64748b);
+  }
+
+  &__hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #94a3b8);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+.toolbox-btn {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color, #1e293b);
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  width: 100%;
+
+  * {
+    pointer-events: none;
+  }
+
+  &:hover {
+    border-color: var(--accent-primary, #5b6ef0);
+    background: rgba(91, 110, 240, 0.05);
+  }
+
+  &__icon {
+    font-size: 1.5rem;
+  }
+
+  &__text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-primary, #ffffff);
+  }
+
+  &__desc {
+    font-size: 0.7rem;
+    color: var(--text-secondary, #94a3b8);
+    margin-top: 0.15rem;
+  }
+}
+
+.fd-canvas-area {
+  flex: 1;
+  background: #090d16; // contrasting dark background for the canvas
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  overflow: auto;
+  position: relative;
+}
+
+.fd-canvas {
+  position: relative;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  overflow: hidden;
+
+  &__grid {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, #cbd5e1 1.5px, transparent 1.5px);
+    background-size: 10px 10px;
+    opacity: 0.4;
+    pointer-events: none;
+  }
+}
+
+.fd-canvas-hint {
+  position: absolute;
+  bottom: 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #94a3b8);
+  max-width: 400px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.fd-el {
+  position: absolute;
+  padding: 4px;
+  border: 1px dashed transparent;
+  border-radius: 6px;
+  cursor: grab;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  transition: border-color 0.15s;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:hover {
+    border-color: #cbd5e1;
+
+    .fd-el__delete-btn {
+      opacity: 1;
+    }
+  }
+
+  &--selected {
+    border-color: var(--accent-primary, #5b6ef0) !important;
+    border-style: solid;
+    box-shadow: 0 0 0 2px rgba(91, 110, 240, 0.2);
+
+    .fd-el__delete-btn {
+      opacity: 1;
+    }
+  }
+
+  &__label-text {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #1e293b;
+    white-space: nowrap;
+    padding: 2px 6px;
+  }
+
+  &__input-container {
+    padding: 2px 6px;
+  }
+
+  &__input-mock {
+    height: 32px;
+    width: 180px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 0 0.5rem;
+    font-size: 0.8rem;
+    background: #f8fafc;
+    color: #94a3b8;
+    cursor: grab;
+    pointer-events: none;
+  }
+
+  &__delete-btn {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #ef4444;
+    color: #ffffff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 15;
+
+    &:hover {
+      transform: scale(1.1);
+      background: #dc2626;
+    }
+  }
+}
+
+.fd-properties {
+  width: 280px;
+  border-left: 1px solid var(--border-color, #1e293b);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+
+  h3 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted, #64748b);
+  }
+
+  &__fields {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  &__empty {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #94a3b8);
+    text-align: center;
+    padding: 2rem 0;
+    line-height: 1.5;
+  }
 }

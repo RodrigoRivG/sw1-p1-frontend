@@ -1,16 +1,18 @@
-import { Component, inject, signal, OnInit, OnDestroy } from '@angular/core';
+import {
+  Component, inject, signal, computed, OnInit, OnDestroy, AfterViewInit,
+  ViewChild, ElementRef, NgZone, HostListener
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { NgIf, NgFor, NgClass } from '@angular/common';
-import { NgxGraphModule } from '@swimlane/ngx-graph';
-import type { Node, Edge, ClusterNode } from '@swimlane/ngx-graph';
-import { Subject } from 'rxjs';
+import { NgIf, NgFor } from '@angular/common';
+import * as joint from '@joint/core';
 import { PolicyService } from '../../core/services/policy.service';
 import { PolicyRequest } from '../../core/models';
 import { UserService } from '../../core/services/user.service';
 import { WebsocketService } from '../../core/services/websocket.service';
 import { IaService } from '../../core/services/ia.service';
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 export type NodeType = 'start' | 'end' | 'task' | 'decision' | 'fork' | 'join';
 
 export interface DiagramSwimlane {
@@ -20,82 +22,132 @@ export interface DiagramSwimlane {
 }
 
 export const NODE_PALETTE = [
-  { type: 'start'    as NodeType, label: 'Inicio',    icon: '▶', color: '#10d9a0' },
-  { type: 'task'     as NodeType, label: 'Tarea',     icon: '☐', color: '#5b6ef0' },
-  { type: 'decision' as NodeType, label: 'Decisión',  icon: '◇', color: '#f59e0b' },
-  { type: 'fork'     as NodeType, label: 'Fork',      icon: '⑂', color: '#8b5cf6' },
-  { type: 'join'     as NodeType, label: 'Join',      icon: '⑁', color: '#8b5cf6' },
-  { type: 'end'      as NodeType, label: 'Fin',       icon: '■', color: '#ef4444' },
+  { type: 'start' as NodeType, label: 'Inicio', icon: '▶', color: '#10d9a0' },
+  { type: 'task' as NodeType, label: 'Tarea', icon: '☐', color: '#5b6ef0' },
+  { type: 'decision' as NodeType, label: 'Decisión', icon: '◇', color: '#f59e0b' },
+  { type: 'fork' as NodeType, label: 'Fork', icon: '⑂', color: '#8b5cf6' },
+  { type: 'join' as NodeType, label: 'Join', icon: '⑁', color: '#8b5cf6' },
+  { type: 'end' as NodeType, label: 'Fin', icon: '■', color: '#ef4444' },
 ];
 
-const COLORS = ['#5b6ef0','#10d9a0','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
+const COLORS = ['#5b6ef0', '#10d9a0', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
+// ─── Layout constants ─────────────────────────────────────────────────────────
+export const COL_WIDTH = 220;   // px width of each swimlane column
+export const HEADER_H = 44;    // px height of swimlane header strip
+export const ROW_SPACING = 110;   // px vertical gap between node rows
+export const START_Y = 70;    // first node Y offset (below header)
+
+const NODE_SIZE: Record<NodeType, { w: number; h: number }> = {
+  start: { w: 36, h: 36 },
+  end: { w: 36, h: 36 },
+  task: { w: 120, h: 48 },
+  decision: { w: 80, h: 56 },
+  fork: { w: 90, h: 10 },
+  join: { w: 90, h: 10 },
+};
+
+// ─── Component ────────────────────────────────────────────────────────────────
 @Component({
   selector: 'app-designer',
   standalone: true,
-  imports: [NgIf, NgFor, NgClass, FormsModule, RouterLink, NgxGraphModule],
+  imports: [NgIf, NgFor, FormsModule, RouterLink],
   templateUrl: './designer.component.html',
   styleUrl: './designer.component.scss'
 })
-export class DesignerComponent implements OnInit, OnDestroy {
-  private route   = inject(ActivatedRoute);
-  private router  = inject(Router);
+export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
+
+  @ViewChild('jointCanvas') canvasRef!: ElementRef<HTMLDivElement>;
+
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
   private policySvc = inject(PolicyService);
-  private userSvc   = inject(UserService);
-  private wsSvc     = inject(WebsocketService);
-  private iaSvc     = inject(IaService);
+  private userSvc = inject(UserService);
+  private wsSvc = inject(WebsocketService);
+  private iaSvc = inject(IaService);
+  private zone = inject(NgZone);
 
-  // ── Policy meta ─────────────────────────────────────────────
-  policyId    = signal<string | null>(null);
-  policyName  = signal('Nueva Política');
-  policyDesc  = signal('');
-  loading     = signal(false);
-  saving      = signal(false);
+  // ── Policy meta ───────────────────────────────────────────────
+  policyId = signal<string | null>(null);
+  policyName = signal('Nueva Política');
+  policyDesc = signal('');
+  loading = signal(false);
+  saving = signal(false);
 
-  // ── Graph data ───────────────────────────────────────────────
-  graphNodes  = signal<Node[]>([]);
-  graphLinks  = signal<Edge[]>([]);
-  clusters    = signal<ClusterNode[]>([]);
-  swimlanes   = signal<DiagramSwimlane[]>([]);
+  // ── Diagram data ──────────────────────────────────────────────
+  swimlanes = signal<DiagramSwimlane[]>([]);
   collaborators = signal<string[]>([]);
 
-  // ── UI state ─────────────────────────────────────────────────
-  selectedNode        = signal<Node | null>(null);
-  selectedNodeEmail   = signal('');
-  resolvingEmail      = signal(false);
-  emailError          = signal<string | null>(null);
-  showAddNode         = signal(false);
-  showAddEdge         = signal(false);
-  showAddSwimlane     = signal(false);
-  showAddCollaborator = signal(false);
-  addingNodeType      = signal<NodeType>('task');
+  // Paper dimensions (kept in sync between HTML layer and JointJS paper)
+  paperWidth = signal(600);
+  paperHeight = signal(700);
 
-  // ── Form values ──────────────────────────────────────────────
-  newNodeLabel    = '';
+  // Expose constants to template
+  readonly colWidth = COL_WIDTH;
+  readonly headerH = HEADER_H;
+
+  private nodeMap = new Map<string, {
+    id: string; label: string; type: NodeType;
+    x: number; y: number;
+    departmentId: string; userId?: string; userEmail?: string;
+    formFields?: any[];
+  }>();
+  private edgeMap = new Map<string, {
+    id: string; source: string; target: string;
+    label?: string; edgeType: string;
+  }>();
+
+  // ── UI state ──────────────────────────────────────────────────
+  selectedNodeId = signal<string | null>(null);
+  selectedNodeData = signal<any>(null);
+  selectedNodeEmail = signal('');
+  resolvingEmail = signal(false);
+  emailError = signal<string | null>(null);
+  showAddSwimlane = signal(false);
+  showAddCollaborator = signal(false);
+  activePlacementType = signal<NodeType | null>(null);
+  connectionMode = signal(false);
+
+  // ── Form values ───────────────────────────────────────────────
+  newNodeLabel = '';
   newNodeSwimlane = '';
-  newNodeUser     = '';
+  newNodeUser = '';
   newSwimlaneName = '';
   newCollaboratorEmail = '';
-  edgeSource      = signal('');
-  edgeTarget      = signal('');
-  edgeType        = signal('sequential');
-  edgeLabel       = signal('');
 
-  // ── IA Chat State ────────────────────────────────────────────
-  showIaPanel     = signal(false);
-  iaQuestion      = signal('');
-  isListeningIa   = signal(false);
-  isProcessingIa  = signal(false);
-  chatMessages    = signal<{ role: 'user' | 'agent'; text: string }[]>([]);
+  // ── Form Designer ─────────────────────────────────────────────
+  showFormDesigner = signal(false);
+  formElements = signal<any[]>([]);
+  selectedFormElementId = signal<string | null>(null);
+
+  activeDragFormElementId: string | null = null;
+  private dragStartX = 0;
+  private dragStartY = 0;
+  private elementStartX = 0;
+  private elementStartY = 0;
+
+  selectedFormElement = computed(() => {
+    const id = this.selectedFormElementId();
+    if (!id) return null;
+    return this.formElements().find(el => el.id === id) || null;
+  });
+
+  // ── IA Chat ───────────────────────────────────────────────────
+  showIaPanel = signal(false);
+  iaQuestion = signal('');
+  isListeningIa = signal(false);
+  isProcessingIa = signal(false);
+  chatMessages = signal<{ role: 'user' | 'agent'; text: string }[]>([]);
   private recognition: any;
 
-  // ── ngx-graph observables ────────────────────────────────────
-  update$     = new Subject<boolean>();
-  center$     = new Subject<boolean>();
-  zoomToFit$  = new Subject<any>();
+  // ── JointJS ───────────────────────────────────────────────────
+  private jGraph!: joint.dia.Graph;
+  private jPaper!: joint.dia.Paper;
+  private canvasReady = false;
+  private isParsing = false;
+  private pendingDiagram: Record<string, unknown> | null = null;
 
-  readonly palette       = NODE_PALETTE;
-  readonly layoutSettings = { orientation: 'LR', rankPadding: 80, nodePadding: 30 };
+  readonly palette = NODE_PALETTE;
 
   // ─────────────────────────────────────────────────────────────
   ngOnInit(): void {
@@ -103,16 +155,323 @@ export class DesignerComponent implements OnInit, OnDestroy {
     if (id) {
       this.policyId.set(id);
       this.loadPolicy(id);
-    } else {
-      this.addDefaultSwimlane();
     }
     this.initSpeechRecognition();
   }
 
-  ngOnDestroy(): void {
-    this.wsSvc.disconnect();
+  ngAfterViewInit(): void {
+    this.zone.runOutsideAngular(() => this.initJoint());
   }
 
+  ngOnDestroy(): void {
+    this.wsSvc.disconnect();
+    this.jPaper?.remove();
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // JointJS init (transparent — swimlanes rendered as HTML behind)
+  // ─────────────────────────────────────────────────────────────
+  private initJoint(): void {
+    this.jGraph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
+
+    this.jPaper = new joint.dia.Paper({
+      el: this.canvasRef.nativeElement,
+      model: this.jGraph,
+      width: this.paperWidth(),
+      height: this.paperHeight(),
+      gridSize: 10,
+      drawGrid: {
+        name: 'doubleMesh',
+        args: [
+          { color: '#f1f5f9', thickness: 1 },
+          { color: '#e2e8f0', scale: 5, thickness: 1 }
+        ]
+      },
+      background: { color: 'transparent' },
+      cellViewNamespace: joint.shapes,
+      interactive: (cellView) => {
+        if (this.connectionMode()) {
+          return { elementMove: false };
+        }
+        return true;
+      },
+      defaultLink: () => this.makeLink('', ''),
+      defaultConnectionPoint: { name: 'boundary' },
+      defaultAnchor: { name: 'center' },
+      defaultRouter: { name: 'manhattan' },
+      defaultConnector: { name: 'rounded', args: { radius: 8 } },
+      magnetThreshold: 'onleave',
+      validateConnection: (sv, sm, tv, tm) => {
+        return sv.model.id !== tv.model.id;
+      },
+      validateMagnet: (cellView, magnet) => {
+        return magnet.getAttribute('magnet') === 'true';
+      },
+      snapLinks: { radius: 20 },
+      linkPinning: false,
+    });
+
+    this.jPaper.on('element:pointerclick', (view) => {
+      this.jPaper.hideTools();
+      this.zone.run(() => this.selectNode(view.model.id as string));
+    });
+
+    this.jPaper.on('blank:pointerclick', (evt, x, y) => {
+      this.jPaper.hideTools();
+      const placementType = this.activePlacementType();
+      if (placementType) {
+        this.zone.run(() => {
+          this.placeNodeAt(placementType, x, y);
+          this.activePlacementType.set(null);
+        });
+      } else {
+        this.zone.run(() => this.selectedNodeId.set(null));
+      }
+    });
+
+    this.jPaper.on('element:pointermove', (view) => {
+      const { x, y } = view.model.position();
+      const data = this.nodeMap.get(view.model.id as string);
+      if (data) {
+        data.x = x;
+        data.y = y;
+
+        // Auto-assign swimlane based on x coordinate
+        const sls = this.swimlanes();
+        if (sls.length > 0) {
+          const slIdx = Math.max(0, Math.min(sls.length - 1, Math.floor(x / COL_WIDTH)));
+          const targetSlId = sls[slIdx].id;
+          if (data.departmentId !== targetSlId) {
+            data.departmentId = targetSlId;
+            if (this.selectedNodeId() === data.id) {
+              this.zone.run(() => {
+                this.selectedNodeData.set({ ...data });
+              });
+            }
+          }
+        }
+      }
+    });
+
+    this.jPaper.on('element:pointerup', () => {
+      this.zone.run(() => this.broadcastUpdate());
+    });
+
+    this.jPaper.on('element:pointerdblclick', (view) => {
+      this.zone.run(() => {
+        this.selectNode(view.model.id as string);
+        setTimeout(() => {
+          const input = document.querySelector('.designer__right input') as HTMLInputElement;
+          if (input) {
+            input.focus();
+            input.select();
+          }
+        }, 50);
+      });
+    });
+
+    this.jPaper.on('link:pointerclick', (linkView) => {
+      this.jPaper.hideTools();
+      const tools = new joint.dia.ToolsView({
+        tools: [
+          new joint.linkTools.Remove()
+        ]
+      });
+      linkView.addTools(tools);
+    });
+
+    // Graph events for link connections and removal
+    this.jGraph.on('add', (cell) => {
+      if (this.isParsing) return;
+      if (cell.isLink()) {
+        cell.on('change:target', (link: any) => {
+          if (this.isParsing) return;
+          const source = link.source();
+          const target = link.target();
+          if (source.id && target.id) {
+
+
+            const existing = this.edgeMap.get(link.id as string);
+            if (!existing || existing.source !== source.id || existing.target !== target.id) {
+              this.zone.run(() => {
+                this.edgeMap.set(link.id as string, {
+                  id: link.id as string,
+                  source: source.id as string,
+                  target: target.id as string,
+                  edgeType: link.get('edgeType') || 'sequential',
+                  label: link.label(0)?.attrs?.text?.text || ''
+                });
+                this.broadcastUpdate();
+              });
+            }
+          }
+        });
+      }
+    });
+
+    this.jGraph.on('remove', (cell) => {
+      if (this.isParsing) return;
+      if (cell.isLink()) {
+        const id = cell.id as string;
+        if (this.edgeMap.has(id)) {
+          this.zone.run(() => {
+            this.edgeMap.delete(id);
+            this.broadcastUpdate();
+          });
+        }
+      }
+    });
+
+    this.canvasReady = true;
+    this.syncPaperSize();
+
+    if (this.pendingDiagram) {
+      this.parseDiagram(this.pendingDiagram);
+      this.pendingDiagram = null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Sync paper dimensions → HTML layer + JointJS paper
+  // ─────────────────────────────────────────────────────────────
+  private syncPaperSize(): void {
+    const totalW = 3000;
+    const totalH = 3000;
+    this.zone.run(() => {
+      this.paperWidth.set(totalW);
+      this.paperHeight.set(totalH);
+    });
+    if (this.canvasReady) {
+      this.jPaper.setDimensions(totalW, totalH);
+    }
+  }
+
+  private getMaxRowCount(): number {
+    const counts = new Map<string, number>();
+    for (const n of this.nodeMap.values()) {
+      counts.set(n.departmentId, (counts.get(n.departmentId) || 0) + 1);
+    }
+    return Math.max(0, ...counts.values());
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Link factory (arrows native to JointJS — no SVG marker issues)
+  // ─────────────────────────────────────────────────────────────
+  private makeLink(srcId: string, tgtId: string, label = '', edgeType = 'sequential'): joint.shapes.standard.Link {
+    const link = new joint.shapes.standard.Link({
+      source: srcId ? { id: srcId } : {},
+      target: tgtId ? { id: tgtId } : {},
+      attrs: {
+        line: {
+          stroke: '#374151',
+          strokeWidth: 1.5,
+          targetMarker: { type: 'path', d: 'M 8 -4 L 0 0 L 8 4 Z', fill: '#374151' },
+        },
+      },
+      labels: label ? [{ attrs: { text: { text: label, fontSize: 10, fill: '#374151' } } }] : [],
+      router: { name: 'manhattan' },
+      connector: { name: 'rounded', args: { radius: 8 } },
+    });
+    link.set('edgeType', edgeType);
+    return link;
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Add a JointJS node element
+  // ─────────────────────────────────────────────────────────────
+  private addJointNode(id: string, label: string, type: NodeType, x: number, y: number): joint.dia.Element {
+    const { w, h } = NODE_SIZE[type];
+    const color = this.palette.find(p => p.type === type)?.color ?? '#5b6ef0';
+    let el: joint.dia.Element;
+
+    switch (type) {
+      case 'start':
+        el = new joint.shapes.standard.Circle({
+          id, position: { x, y }, size: { width: w, height: h },
+          attrs: {
+            body: { fill: '#1f2937', stroke: 'none' },
+            label: { text: '', pointerEvents: 'none' }
+          },
+          z: 2,
+        });
+        break;
+
+      case 'end':
+        el = new joint.shapes.standard.Circle({
+          id, position: { x, y }, size: { width: w, height: h },
+          attrs: {
+            body: { fill: '#fff', stroke: '#1f2937', strokeWidth: 4 },
+            label: { text: '', pointerEvents: 'none' },
+          },
+          z: 2,
+        });
+        // inner filled dot via second circle
+        {
+          const inner = new joint.shapes.standard.Circle({
+            id: `${id}-inner`,
+            position: { x: x + 8, y: y + 8 },
+            size: { width: w - 16, height: h - 16 },
+            attrs: { body: { fill: '#1f2937', stroke: 'none', pointerEvents: 'none' }, label: { text: '', pointerEvents: 'none' } },
+            z: 3,
+          });
+          this.jGraph.addCell(inner);
+          el.embed(inner);
+        }
+        break;
+
+      case 'decision':
+        el = new joint.shapes.standard.Path({
+          id, position: { x, y }, size: { width: w, height: h },
+          attrs: {
+            body: {
+              fill: '#fff', stroke: '#1f2937', strokeWidth: 1.5,
+              d: `M ${w / 2} 0 L ${w} ${h / 2} L ${w / 2} ${h} L 0 ${h / 2} Z`,
+            },
+            label: { text: label, fontSize: 10, fill: '#1f2937', textWrap: { width: w - 8, height: h - 8 }, pointerEvents: 'none' },
+          },
+          z: 2,
+        });
+        break;
+
+      case 'fork':
+      case 'join':
+        el = new joint.shapes.standard.Rectangle({
+          id, position: { x, y }, size: { width: w, height: h },
+          attrs: {
+            body: { fill: '#1f2937', stroke: '#1f2937', rx: 2, ry: 2 },
+            label: { text: label, fontSize: 9, fill: '#fff', refY: -14, pointerEvents: 'none' },
+          },
+          z: 2,
+        });
+        break;
+
+      default: // task
+        el = new joint.shapes.standard.Rectangle({
+          id, position: { x, y }, size: { width: w, height: h },
+          attrs: {
+            body: { fill: '#fff', stroke: '#1f2937', strokeWidth: 1.5, rx: 8, ry: 8 },
+            label: {
+              text: label, fontSize: 12, fill: '#1f2937',
+              textWrap: { width: w - 16, height: h - 8 },
+              pointerEvents: 'none'
+            },
+          },
+          z: 2,
+        });
+    }
+
+    el.attr('body/magnet', this.connectionMode());
+    this.jGraph.addCell(el);
+    return el;
+  }
+
+  get graphNodesList() {
+    return [...this.nodeMap.values()];
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Policy load / parse
+  // ─────────────────────────────────────────────────────────────
   loadPolicy(id: string): void {
     this.loading.set(true);
     this.policySvc.getById(id).subscribe({
@@ -122,14 +481,9 @@ export class DesignerComponent implements OnInit, OnDestroy {
         this.collaborators.set(p.collaborators || []);
         this.parseDiagram(p.diagram ?? {});
         this.loading.set(false);
-        setTimeout(() => this.zoomToFit$.next({ autoCenter: true }), 400);
-
-        // Connect to WS once the policy is loaded
         this.wsSvc.connect(() => {
-          this.wsSvc.subscribe(`/topic/policy/${id}`, (diagramMsg) => {
-            if (diagramMsg) {
-              this.parseDiagram(diagramMsg);
-            }
+          this.wsSvc.subscribe(`/topic/policy/${id}`, (msg) => {
+            if (msg) this.parseDiagram(msg);
           });
         });
       },
@@ -138,54 +492,95 @@ export class DesignerComponent implements OnInit, OnDestroy {
   }
 
   parseDiagram(diagram: Record<string, unknown>): void {
-    const rawSwimlanes = (diagram['swimlanes'] as DiagramSwimlane[]) ?? [];
-    const rawNodes     = (diagram['nodes']     as any[]) ?? [];
-    const rawEdges     = (diagram['edges']     as any[]) ?? [];
+    if (!this.canvasReady) {
+      this.pendingDiagram = diagram;
+      return;
+    }
 
-    this.swimlanes.set(rawSwimlanes);
+    this.isParsing = true;
+    try {
+      this.jGraph.clear();
+      this.nodeMap.clear();
+      this.edgeMap.clear();
 
-    this.graphNodes.set(rawNodes.map(n => ({
-      id: n.id, label: n.data?.label ?? '', data: { ...(n.data ?? {}), type: n.data?.type ?? 'task' }
-    })));
+      const rawSwimlanes = (diagram['swimlanes'] as DiagramSwimlane[]) ?? [];
+      const rawNodes = (diagram['nodes'] as any[]) ?? [];
+      const rawEdges = (diagram['edges'] as any[]) ?? [];
 
-    this.graphLinks.set(rawEdges.map(e => ({
-      id: e.id, source: e.source, target: e.target,
-      label: e.label ?? '', data: { type: e.type ?? 'sequential' }
-    })));
+      this.swimlanes.set(rawSwimlanes);
+      this.syncPaperSize();
 
-    this.clusters.set(rawSwimlanes.map(sl => ({
-      id: sl.id, label: sl.label, data: { color: sl.color },
-      childNodeIds: rawNodes.filter(n => n.data?.departmentId === sl.id).map((n:any) => n.id)
-    })));
+      rawNodes.forEach(n => {
+        const type: NodeType = n.data?.type ?? 'task';
+        const label: string = n.data?.label ?? n.id;
+        const slId: string = n.data?.departmentId ?? rawSwimlanes[0]?.id ?? '';
+        const slIdx = Math.max(0, rawSwimlanes.findIndex((s: any) => s.id === slId));
+        const { w } = NODE_SIZE[type];
+        const x: number = n.data?.x ?? (slIdx * COL_WIDTH + (COL_WIDTH - w) / 2);
+        const y: number = n.data?.y ?? (HEADER_H + START_Y + this.nodeMap.size * ROW_SPACING);
 
-    this.update$.next(true);
-  }
+        this.nodeMap.set(n.id, {
+          id: n.id,
+          label,
+          type,
+          x,
+          y,
+          departmentId: slId,
+          userId: n.data?.userId,
+          userEmail: n.data?.userEmail,
+          formFields: Array.isArray(n.data?.formFields) ? n.data.formFields : []
+        });
+        this.addJointNode(n.id, label, type, x, y);
+      });
 
-  // ── WebSockets Broadcast ──────────────────────────────────────
-  broadcastUpdate(): void {
-    const id = this.policyId();
-    if (id) {
-      const diagram = {
-        swimlanes: this.swimlanes(),
-        nodes: this.graphNodes().map(n => ({ id: n.id, data: n.data })),
-        edges: this.graphLinks().map(e => ({
-          id: e.id, source: e.source, target: e.target,
-          label: e.label, type: e.data?.['type'] ?? 'sequential'
-        }))
-      };
-      this.wsSvc.publish(`/app/policy/${id}/update`, diagram);
+      rawEdges.forEach(e => {
+        this.edgeMap.set(e.id, { id: e.id, source: e.source, target: e.target, label: e.label ?? '', edgeType: e.type ?? 'sequential' });
+        const link = this.makeLink(e.source, e.target, e.label ?? '', e.type ?? 'sequential');
+        link.id = e.id;
+        this.jGraph.addCell(link);
+      });
+    } finally {
+      this.isParsing = false;
     }
   }
 
-  // ── Swimlanes ─────────────────────────────────────────────────
-  private addDefaultSwimlane(): void {
-    this.doAddSwimlane('Departamento A');
+  // ─────────────────────────────────────────────────────────────
+  // WebSocket broadcast
+  // ─────────────────────────────────────────────────────────────
+  broadcastUpdate(): void {
+    if (this.isParsing) return;
+    const id = this.policyId();
+    if (!id) return;
+    this.wsSvc.publish(`/app/policy/${id}/update`, this.buildDiagramPayload());
   }
 
-  openAddSwimlane(): void {
-    this.newSwimlaneName = '';
-    this.showAddSwimlane.set(true);
+  private buildDiagramPayload(): Record<string, unknown> {
+    return {
+      swimlanes: this.swimlanes(),
+      nodes: [...this.nodeMap.values()].map(n => ({
+        id: n.id, data: {
+          label: n.label,
+          type: n.type,
+          departmentId: n.departmentId,
+          userId: n.userId ?? '',
+          userEmail: n.userEmail ?? '',
+          x: n.x,
+          y: n.y,
+          formFields: n.formFields ?? []
+        }
+      })),
+      edges: [...this.edgeMap.values()].map(e => ({
+        id: e.id, source: e.source, target: e.target, label: e.label ?? '', type: e.edgeType
+      })),
+    };
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // Swimlanes
+  // ─────────────────────────────────────────────────────────────
+  private addDefaultSwimlane(): void { this.doAddSwimlane('Departamento A'); }
+
+  openAddSwimlane(): void { this.newSwimlaneName = ''; this.showAddSwimlane.set(true); }
 
   confirmAddSwimlane(): void {
     if (!this.newSwimlaneName.trim()) return;
@@ -195,359 +590,415 @@ export class DesignerComponent implements OnInit, OnDestroy {
   }
 
   private doAddSwimlane(name: string): void {
-    const id    = `sl-${Date.now()}`;
+    const id = `sl-${Date.now()}`;
     const color = COLORS[this.swimlanes().length % COLORS.length];
     this.swimlanes.update(l => [...l, { id, label: name, color }]);
-    this.clusters.update(l => [...l, { id, label: name, childNodeIds: [], data: { color } }]);
+    this.syncPaperSize();
   }
 
   deleteSwimlane(id: string): void {
     this.swimlanes.update(l => l.filter(s => s.id !== id));
-    this.clusters.update(l => l.filter(c => c.id !== id));
+    this.syncPaperSize();
     this.broadcastUpdate();
   }
 
-  // ── Collaborators ─────────────────────────────────────────────
-  openAddCollaborator(): void {
-    this.newCollaboratorEmail = '';
-    this.emailError.set(null);
-    this.showAddCollaborator.set(true);
-  }
+  // ─────────────────────────────────────────────────────────────
+  // Collaborators
+  // ─────────────────────────────────────────────────────────────
+  openAddCollaborator(): void { this.newCollaboratorEmail = ''; this.emailError.set(null); this.showAddCollaborator.set(true); }
 
   confirmAddCollaborator(): void {
     const email = this.newCollaboratorEmail.trim();
     if (!email) return;
-
     this.resolvingEmail.set(true);
     this.emailError.set(null);
-
     this.userSvc.getByEmail(email).subscribe({
       next: (user) => {
         this.resolvingEmail.set(false);
-        if (this.collaborators().includes(user.id)) {
-          this.emailError.set('Este usuario ya es colaborador.');
-          return;
-        }
-
-        const policyId = this.policyId();
-        if (policyId) {
-          this.policySvc.addCollaborator(policyId, user.id).subscribe({
-            next: () => {
-              this.collaborators.update(c => [...c, user.id]);
-              this.showAddCollaborator.set(false);
-            },
-            error: (err) => this.emailError.set('Error al guardar el colaborador.')
+        if (this.collaborators().includes(user.id)) { this.emailError.set('Este usuario ya es colaborador.'); return; }
+        const pid = this.policyId();
+        if (pid) {
+          this.policySvc.addCollaborator(pid, user.id).subscribe({
+            next: () => { this.collaborators.update(c => [...c, user.id]); this.showAddCollaborator.set(false); },
+            error: () => this.emailError.set('Error al guardar el colaborador.')
           });
         } else {
           this.collaborators.update(c => [...c, user.id]);
           this.showAddCollaborator.set(false);
         }
       },
-      error: () => {
-        this.resolvingEmail.set(false);
-        this.emailError.set(`No se encontró un usuario con el email "${email}"`);
-      }
+      error: () => { this.resolvingEmail.set(false); this.emailError.set(`No se encontró un usuario con el email "${email}"`); }
     });
   }
 
   removeCollaborator(userId: string): void {
-    const policyId = this.policyId();
-    if (policyId) {
-      this.policySvc.removeCollaborator(policyId, userId).subscribe({
-        next: () => this.collaborators.update(c => c.filter(id => id !== userId))
-      });
+    const pid = this.policyId();
+    if (pid) this.policySvc.removeCollaborator(pid, userId).subscribe({ next: () => this.collaborators.update(c => c.filter(id => id !== userId)) });
+    else this.collaborators.update(c => c.filter(id => id !== userId));
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Nodes
+  // ─────────────────────────────────────────────────────────────
+  selectPaletteItem(type: NodeType): void {
+    if (this.activePlacementType() === type) {
+      this.activePlacementType.set(null);
     } else {
-      this.collaborators.update(c => c.filter(id => id !== userId));
+      this.activePlacementType.set(type);
     }
   }
 
-  // ── Nodes ─────────────────────────────────────────────────────
-  openAddNode(type: NodeType): void {
-    this.addingNodeType.set(type);
-    this.newNodeLabel    = type === 'start' ? 'Inicio' : type === 'end' ? 'Fin' : '';
-    this.newNodeSwimlane = this.swimlanes()[0]?.id ?? '';
-    this.newNodeUser     = '';
-    this.showAddNode.set(true);
+  placeNodeAt(type: NodeType, x: number, y: number): void {
+    const id = `n-${Date.now()}`;
+    const typeLabel = this.getPaletteLabel(type);
+    const existingCount = [...this.nodeMap.values()].filter(n => n.type === type).length;
+    const label = type === 'start' ? 'Inicio' : type === 'end' ? 'Fin' : `${typeLabel} ${existingCount + 1}`;
+
+    const sls = this.swimlanes();
+    let slId = '';
+    if (sls.length > 0) {
+      const slIdx = Math.max(0, Math.min(sls.length - 1, Math.floor(x / COL_WIDTH)));
+      slId = sls[slIdx].id;
+    }
+
+    const { w, h } = NODE_SIZE[type];
+    const nodeX = x - w / 2;
+    const nodeY = y - h / 2;
+
+    this.nodeMap.set(id, {
+      id,
+      label,
+      type,
+      x: nodeX,
+      y: nodeY,
+      departmentId: slId,
+      userId: '',
+      formFields: []
+    });
+
+    this.syncPaperSize();
+    if (this.canvasReady) {
+      this.addJointNode(id, label, type, nodeX, nodeY);
+    }
+
+    this.selectNode(id);
+    setTimeout(() => this.broadcastUpdate(), 50);
   }
 
-  confirmAddNode(): void {
-    if (!this.newNodeLabel.trim()) return;
-    const id      = `n-${Date.now()}`;
-    const type    = this.addingNodeType();
-    const newNode: Node = {
-      id, label: this.newNodeLabel,
-      data: { label: this.newNodeLabel, type, userId: this.newNodeUser, departmentId: this.newNodeSwimlane }
-    };
-    this.graphNodes.update(l => [...l, newNode]);
-    this.clusters.update(l => l.map(cl =>
-      cl.id === this.newNodeSwimlane
-        ? { ...cl, childNodeIds: [...(cl.childNodeIds ?? []), id] }
-        : cl
-    ));
-    this.showAddNode.set(false);
-    setTimeout(() => {
-      this.update$.next(true);
-      this.broadcastUpdate();
-    }, 50);
+  toggleConnectionMode(): void {
+    const nextMode = !this.connectionMode();
+    this.connectionMode.set(nextMode);
+
+    if (this.canvasReady) {
+      this.jGraph.getElements().forEach(el => {
+        if (!el.id.toString().endsWith('-inner')) {
+          el.attr('body/magnet', nextMode);
+        }
+      });
+    }
   }
 
-  onNodeSelect(node: Node): void {
-    this.selectedNode.set({ ...node });
-    this.selectedNodeEmail.set(node.data?.userEmail ?? '');
+  @HostListener('document:keydown.escape')
+  onEscape(): void {
+    if (this.connectionMode()) {
+      if (this.canvasReady) {
+        // Eliminar links incompletos (sin target definido)
+        this.jGraph.getLinks().forEach(link => {
+          if (!link.getTargetElement()) {
+            link.remove();
+          }
+        });
+
+        // Desactivar magnet en todos los nodos
+        this.jGraph.getElements().forEach(el => {
+          if (!el.id.toString().endsWith('-inner')) {
+            el.attr('body/magnet', false);
+          }
+        });
+      }
+      this.connectionMode.set(false);
+    }
+  }
+
+  selectNode(nodeId: string): void {
+    const data = this.nodeMap.get(nodeId);
+    if (!data) return;
+    this.selectedNodeId.set(nodeId);
+    this.selectedNodeData.set({ ...data });
+    this.selectedNodeEmail.set(data.userEmail ?? '');
     this.emailError.set(null);
+  }
+
+  setSelectedProp(prop: string, value: string): void {
+    const d = this.selectedNodeData();
+    if (!d) return;
+    this.selectedNodeData.set({ ...d, [prop]: value });
   }
 
   resolveEmailAndUpdate(): void {
-    const n = this.selectedNode();
-    if (!n) return;
-
+    const d = this.selectedNodeData();
+    if (!d) return;
     const email = this.selectedNodeEmail().trim();
-
-    if (!email) {
-      this.selectedNode.set({ ...n, data: { ...n.data, userId: '', userEmail: '' } });
-      this.updateNode();
-      return;
-    }
-
+    if (!email) { this.selectedNodeData.set({ ...d, userId: '', userEmail: '' }); this.updateNode(); return; }
     this.resolvingEmail.set(true);
     this.emailError.set(null);
-
     this.userSvc.getByEmail(email).subscribe({
-      next: (user) => {
-        this.resolvingEmail.set(false);
-        this.selectedNode.set({
-          ...n,
-          data: { ...n.data, userId: user.id, userEmail: email }
-        });
-        this.updateNode();
-      },
-      error: () => {
-        this.resolvingEmail.set(false);
-        this.emailError.set(`No se encontró un usuario con el email "${email}"`);
-      }
+      next: (user) => { this.resolvingEmail.set(false); this.selectedNodeData.set({ ...d, userId: user.id, userEmail: email }); this.updateNode(); },
+      error: () => { this.resolvingEmail.set(false); this.emailError.set(`No se encontró un usuario con el email "${email}"`); }
     });
   }
 
   updateNode(): void {
-    const n = this.selectedNode();
-    if (!n) return;
-    this.graphNodes.update(l => l.map(x => x.id === n.id ? { ...x, label: n.data.label, data: { ...n.data } } : x));
-    // reassign cluster
-    this.clusters.update(l => l.map(cl => ({
-      ...cl,
-      childNodeIds: (cl.childNodeIds ?? []).filter(id => id !== n.id)
-    })));
-    this.clusters.update(l => l.map(cl =>
-      cl.id === n.data.departmentId
-        ? { ...cl, childNodeIds: [...(cl.childNodeIds ?? []), n.id] }
-        : cl
-    ));
-    this.update$.next(true);
+    const d = this.selectedNodeData();
+    if (!d) return;
+    const existing = this.nodeMap.get(d.id);
+    if (!existing) return;
+
+    // Check if the swimlane changed
+    if (existing.departmentId !== d.departmentId) {
+      const sls = this.swimlanes();
+      const slIdx = sls.findIndex(s => s.id === d.departmentId);
+      if (slIdx !== -1) {
+        const { w } = NODE_SIZE[d.type as NodeType];
+        const newX = slIdx * COL_WIDTH + (COL_WIDTH - w) / 2;
+        d.x = newX;
+
+        const el = this.jGraph.getCell(d.id) as joint.dia.Element;
+        if (el) {
+          el.position(newX, d.y);
+          if (d.type === 'end') {
+            const inner = this.jGraph.getCell(`${d.id}-inner`) as joint.dia.Element;
+            if (inner) inner.position(newX + 8, d.y + 8);
+          }
+        }
+      }
+    }
+
+    this.nodeMap.set(d.id, { ...existing, ...d });
+    const el = this.jGraph.getCell(d.id) as joint.dia.Element;
+    if (el) el.attr('label/text', d.label);
     this.broadcastUpdate();
   }
 
   deleteNode(): void {
-    const n = this.selectedNode();
-    if (!n) return;
-    this.graphNodes.update(l => l.filter(x => x.id !== n.id));
-    this.graphLinks.update(l => l.filter(e => e.source !== n.id && e.target !== n.id));
-    this.clusters.update(l => l.map(cl => ({
-      ...cl, childNodeIds: (cl.childNodeIds ?? []).filter(id => id !== n.id)
-    })));
-    this.selectedNode.set(null);
-    this.update$.next(true);
+    const id = this.selectedNodeId();
+    if (!id) return;
+    this.nodeMap.delete(id);
+    for (const [eid, e] of this.edgeMap.entries()) {
+      if (e.source === id || e.target === id) this.edgeMap.delete(eid);
+    }
+    const cell = this.jGraph.getCell(id);
+    if (cell) cell.remove();
+    const innerCell = this.jGraph.getCell(`${id}-inner`);
+    if (innerCell) innerCell.remove();
+    this.selectedNodeId.set(null);
+    this.selectedNodeData.set(null);
+    this.syncPaperSize();
     this.broadcastUpdate();
   }
 
-  // ── Edges ─────────────────────────────────────────────────────
-  openAddEdge(): void {
-    this.edgeSource.set(this.graphNodes()[0]?.id ?? '');
-    this.edgeTarget.set(this.graphNodes()[1]?.id ?? '');
-    this.edgeType.set('sequential');
-    this.edgeLabel.set('');
-    this.showAddEdge.set(true);
-  }
 
-  confirmAddEdge(): void {
-    const src = this.edgeSource();
-    const tgt = this.edgeTarget();
-    if (!src || !tgt || src === tgt) return;
-    const id = `e-${Date.now()}`;
-    this.graphLinks.update(l => [...l, {
-      id, source: src, target: tgt,
-      label: this.edgeLabel(), data: { type: this.edgeType() }
-    }]);
-    this.showAddEdge.set(false);
-    setTimeout(() => {
-      this.update$.next(true);
-      this.broadcastUpdate();
-    }, 50);
-  }
 
-  // ── Save ──────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────
+  // Save
+  // ─────────────────────────────────────────────────────────────
   save(): void {
     this.saving.set(true);
-    const diagram: Record<string, unknown> = {
-      swimlanes: this.swimlanes(),
-      nodes: this.graphNodes().map(n => ({ id: n.id, data: n.data })),
-      edges: this.graphLinks().map(e => ({
-        id: e.id, source: e.source, target: e.target,
-        label: e.label, type: e.data?.['type'] ?? 'sequential'
-      }))
-    };
     const req: PolicyRequest = {
       name: this.policyName(), description: this.policyDesc(),
-      diagram, status: 'DRAFT',
+      diagram: this.buildDiagramPayload(), status: 'DRAFT',
       collaborators: this.collaborators()
     };
     const id = this.policyId();
     const obs = id ? this.policySvc.update(id, req) : this.policySvc.create(req);
     obs.subscribe({
       next: (p) => {
-        if (!id) {
-          this.policyId.set(p.id);
-          this.router.navigate(['/admin/designer', p.id], { replaceUrl: true });
-        }
+        if (!id) { this.policyId.set(p.id); this.router.navigate(['/admin/designer', p.id], { replaceUrl: true }); }
         this.saving.set(false);
       },
       error: () => this.saving.set(false)
     });
   }
 
-  // ── Helpers ───────────────────────────────────────────────────
-  nodeColor(type: string): string {
-    return this.palette.find(p => p.type === type)?.color ?? '#5b6ef0';
-  }
-  nodeIcon(type: string): string {
-    return this.palette.find(p => p.type === type)?.icon ?? '□';
-  }
-  swimlaneColor(id: string): string {
-    return this.swimlanes().find(s => s.id === id)?.color ?? '#5b6ef0';
-  }
-
-  setSelectedProp(prop: string, value: string): void {
-    const n = this.selectedNode();
-    if (!n) return;
-    this.selectedNode.set({ ...n, data: { ...n.data, [prop]: value } });
-  }
-
-  getPaletteLabel(type: NodeType): string {
-    return this.palette.find(p => p.type === type)?.label ?? type;
-  }
-
+  // ─────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────
   get canSave(): boolean { return !!this.policyName().trim() && !this.saving(); }
+
+  nodeColor(type: string): string { return this.palette.find(p => p.type === type)?.color ?? '#5b6ef0'; }
+  nodeIcon(type: string): string { return this.palette.find(p => p.type === type)?.icon ?? '□'; }
+  getPaletteLabel(type: NodeType): string { return this.palette.find(p => p.type === type)?.label ?? type; }
+  swimlaneColor(id: string): string { return this.swimlanes().find(s => s.id === id)?.color ?? '#5b6ef0'; }
   trackById(_: number, x: { id: string }): string { return x.id; }
 
-  // ── IA Chat ───────────────────────────────────────────────────
-  toggleIaPanel(): void {
-    this.showIaPanel.set(!this.showIaPanel());
-  }
+
+
+  // ─────────────────────────────────────────────────────────────
+  // IA Chat
+  // ─────────────────────────────────────────────────────────────
+  toggleIaPanel(): void { this.showIaPanel.set(!this.showIaPanel()); }
 
   private initSpeechRecognition(): void {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-    this.recognition = new SpeechRecognition();
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) return;
+    this.recognition = new SR();
     this.recognition.lang = 'es-ES';
     this.recognition.interimResults = false;
-    this.recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      this.iaQuestion.update(v => v ? v + ' ' + transcript : transcript);
-    };
+    this.recognition.onresult = (e: any) => { const t = e.results[0][0].transcript; this.iaQuestion.update(v => v ? v + ' ' + t : t); };
     this.recognition.onerror = () => this.isListeningIa.set(false);
-    this.recognition.onend   = () => this.isListeningIa.set(false);
+    this.recognition.onend = () => this.isListeningIa.set(false);
   }
 
   toggleIaVoice(): void {
     if (!this.recognition) return;
-    if (this.isListeningIa()) {
-      this.recognition.stop();
-      this.isListeningIa.set(false);
-    } else {
-      this.recognition.start();
-      this.isListeningIa.set(true);
-    }
+    if (this.isListeningIa()) { this.recognition.stop(); this.isListeningIa.set(false); }
+    else { this.recognition.start(); this.isListeningIa.set(true); }
   }
 
   sendIaMessage(): void {
     const q = this.iaQuestion().trim();
     if (!q || this.isProcessingIa()) return;
-
-    // Push user message
-    this.chatMessages.update(msgs => [...msgs, { role: 'user', text: q }]);
+    this.chatMessages.update(m => [...m, { role: 'user', text: q }]);
     this.iaQuestion.set('');
     this.isProcessingIa.set(true);
-
     this.iaSvc.designerAgent(q).subscribe({
-      next: (res) => {
-        this.chatMessages.update(msgs => [
-          ...msgs,
-          { role: 'agent', text: res?.response ?? 'Sin respuesta.' }
-        ]);
-        this.isProcessingIa.set(false);
-        // Scroll chat to bottom after render
-        setTimeout(() => this.scrollChatToBottom(), 50);
-      },
-      error: (err) => {
-        const msg = typeof err.error === 'string' ? err.error : 'Error al conectar con el agente.';
-        this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: `⚠️ ${msg}` }]);
-        this.isProcessingIa.set(false);
-        setTimeout(() => this.scrollChatToBottom(), 50);
-      }
+      next: (res) => { this.chatMessages.update(m => [...m, { role: 'agent', text: res?.response ?? 'Sin respuesta.' }]); this.isProcessingIa.set(false); setTimeout(() => this.scrollChatToBottom(), 50); },
+      error: (err) => { const msg = typeof err.error === 'string' ? err.error : 'Error al conectar con el agente.'; this.chatMessages.update(m => [...m, { role: 'agent', text: `⚠️ ${msg}` }]); this.isProcessingIa.set(false); setTimeout(() => this.scrollChatToBottom(), 50); }
     });
   }
+
   sendDesignFlow(): void {
     const q = this.iaQuestion().trim();
     if (!q || this.isProcessingIa()) return;
-
-    this.chatMessages.update(msgs => [...msgs, { role: 'user', text: `✨ ${q}` }]);
+    this.chatMessages.update(m => [...m, { role: 'user', text: `✨ ${q}` }]);
     this.iaQuestion.set('');
     this.isProcessingIa.set(true);
-
-    const diagramObj = {
-      swimlanes: this.swimlanes(),
-      nodes: this.graphNodes().map(n => ({ id: n.id, data: n.data })),
-      edges: this.graphLinks().map(e => ({
-        id: e.id, source: e.source, target: e.target,
-        label: e.label, type: e.data?.['type'] ?? 'sequential'
-      }))
-    };
-
-    this.iaSvc.designFlow({ diagram: diagramObj, instruction: q }).subscribe({
+    this.iaSvc.designFlow({ diagram: this.buildDiagramPayload(), instruction: q }).subscribe({
       next: (res) => {
-        if (res && res.diagram) {
-          try {
-            const newDiagram = typeof res.diagram === 'string' ? JSON.parse(res.diagram) : res.diagram;
-            this.parseDiagram(newDiagram);
-            setTimeout(() => { this.update$.next(true); this.broadcastUpdate(); }, 100);
-            this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '✅ Diagrama actualizado con éxito.' }]);
-          } catch (e) {
-            this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '⚠️ La IA respondió pero no pude interpretar el diagrama.' }]);
-          }
-        } else {
-          this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: '⚠️ Sin respuesta válida del servidor.' }]);
-        }
+        if (res?.diagram) {
+          try { const d = typeof res.diagram === 'string' ? JSON.parse(res.diagram) : res.diagram; this.parseDiagram(d); setTimeout(() => this.broadcastUpdate(), 100); this.chatMessages.update(m => [...m, { role: 'agent', text: '✅ Diagrama actualizado.' }]); }
+          catch { this.chatMessages.update(m => [...m, { role: 'agent', text: '⚠️ No pude interpretar el diagrama.' }]); }
+        } else { this.chatMessages.update(m => [...m, { role: 'agent', text: '⚠️ Sin respuesta válida.' }]); }
         this.isProcessingIa.set(false);
         setTimeout(() => this.scrollChatToBottom(), 50);
       },
-      error: (err) => {
-        const msg = typeof err.error === 'string' ? err.error : 'Error al aplicar el cambio.';
-        this.chatMessages.update(msgs => [...msgs, { role: 'agent', text: `⚠️ ${msg}` }]);
-        this.isProcessingIa.set(false);
-        setTimeout(() => this.scrollChatToBottom(), 50);
-      }
+      error: (err) => { const msg = typeof err.error === 'string' ? err.error : 'Error al aplicar el cambio.'; this.chatMessages.update(m => [...m, { role: 'agent', text: `⚠️ ${msg}` }]); this.isProcessingIa.set(false); setTimeout(() => this.scrollChatToBottom(), 50); }
     });
   }
 
-
   onIaKeydown(event: KeyboardEvent): void {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      this.sendIaMessage();
-    }
+    if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); this.sendIaMessage(); }
   }
 
   private scrollChatToBottom(): void {
     const el = document.querySelector('.ia-chat__messages');
     if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  // ── Form Designer Methods ─────────────────────────────────────
+  openFormDesigner(): void {
+    const nodeId = this.selectedNodeId();
+    if (!nodeId) return;
+    const node = this.nodeMap.get(nodeId);
+    if (!node) return;
+    
+    // Copy the existing form fields or default to empty array safely
+    const fields = Array.isArray(node.formFields) ? JSON.parse(JSON.stringify(node.formFields)) : [];
+    this.formElements.set(fields);
+    this.selectedFormElementId.set(null);
+    this.showFormDesigner.set(true);
+  }
+
+  addFormElement(type: 'label' | 'input'): void {
+    const id = `fe-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const text = type === 'label' ? 'Escribe aquí tu mensaje' : 'Escribe tu respuesta aquí';
+    
+    // Find an empty Y slot
+    const x = 50;
+    const y = 50 + (this.formElements().length * 40) % 250;
+    
+    const newElement = {
+      id,
+      type,
+      x,
+      y,
+      text
+    };
+    
+    console.log('addFormElement adding:', newElement);
+    this.formElements.set([...this.formElements(), newElement]);
+    this.selectedFormElementId.set(id);
+    console.log('formElements is now:', this.formElements());
+  }
+
+  selectFormElement(id: string, event?: MouseEvent): void {
+    if (event) {
+      event.stopPropagation();
+    }
+    this.selectedFormElementId.set(id);
+  }
+
+  startDragFormElement(event: MouseEvent, elementId: string, currentX: number, currentY: number): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.selectedFormElementId.set(elementId);
+    this.activeDragFormElementId = elementId;
+    this.dragStartX = event.clientX;
+    this.dragStartY = event.clientY;
+    this.elementStartX = currentX;
+    this.elementStartY = currentY;
+  }
+
+  updateFormElementText(text: string): void {
+    const id = this.selectedFormElementId();
+    if (!id) return;
+    this.formElements.set(
+      this.formElements().map(el => el.id === id ? { ...el, text } : el)
+    );
+  }
+
+  deleteFormElement(id: string): void {
+    console.log('deleteFormElement called for:', id);
+    this.formElements.set(this.formElements().filter(el => el.id !== id));
+    if (this.selectedFormElementId() === id) {
+      this.selectedFormElementId.set(null);
+    }
+  }
+
+  saveFormDesign(): void {
+    const nodeId = this.selectedNodeId();
+    if (!nodeId) return;
+    const node = this.nodeMap.get(nodeId);
+    if (!node) return;
+    
+    node.formFields = this.formElements();
+    this.showFormDesigner.set(false);
+    this.broadcastUpdate();
+  }
+
+  @HostListener('document:mousemove', ['$event'])
+  onFormMouseMove(event: MouseEvent): void {
+    if (this.activeDragFormElementId) {
+      const deltaX = event.clientX - this.dragStartX;
+      const deltaY = event.clientY - this.dragStartY;
+      
+      let newX = this.elementStartX + deltaX;
+      let newY = this.elementStartY + deltaY;
+      
+      // Snap to 10px grid and clamp within 600x400 canvas bounds
+      newX = Math.max(0, Math.min(420, Math.round(newX / 10) * 10));
+      newY = Math.max(0, Math.min(350, Math.round(newY / 10) * 10));
+      
+      this.formElements.set(
+        this.formElements().map(el => el.id === this.activeDragFormElementId ? { ...el, x: newX, y: newY } : el)
+      );
+    }
+  }
+
+  @HostListener('document:mouseup')
+  onFormMouseUp(): void {
+    if (this.activeDragFormElementId) {
+      this.activeDragFormElementId = null;
+    }
   }
 }
