@@ -6,6 +6,7 @@ import { LoginComponent } from './features/auth/login/login.component';
 import { PolicyListComponent } from './features/policies/policy-list/policy-list.component';
 import { DesignerComponent } from './features/designer/designer.component';
 import { MonitorComponent } from './features/monitor/monitor.component';
+import { AnalyticsComponent } from './features/analytics/analytics.component';
 
 export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
@@ -20,6 +21,7 @@ export const routes: Routes = [
       { path: 'policies', component: PolicyListComponent },
       { path: 'designer', component: DesignerComponent },
       { path: 'designer/:id', component: DesignerComponent },
+      { path: 'analytics', component: AnalyticsComponent },
     ]
   },
 

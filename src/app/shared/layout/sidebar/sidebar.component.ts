@@ -24,6 +24,7 @@ export class SidebarComponent {
   navItems: NavItem[] = [
     { label: 'Políticas',  icon: '📋', route: '/admin/policies', roles: ['admin'] },
     { label: 'Diseñador',  icon: '🎨', route: '/admin/designer', roles: ['admin'] },
+    { label: 'Analíticas', icon: '📈', route: '/admin/analytics', roles: ['admin'] },
     { label: 'Monitor',    icon: '📊', route: '/monitor',         roles: ['employee'] },
   ];
 

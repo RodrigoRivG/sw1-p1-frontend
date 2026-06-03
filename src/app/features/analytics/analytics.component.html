@@ -1,0 +1,186 @@
+<div class="analytics-wrapper">
+  <!-- Header -->
+  <div class="analytics-header">
+    <div class="header-content">
+      <div class="title-section">
+        <div class="icon-box">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10" />
+            <line x1="12" y1="20" x2="12" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="14" />
+          </svg>
+        </div>
+        <div>
+          <h1>Panel de Analíticas y KPIs</h1>
+          <p>Métricas en tiempo real sobre la eficiencia y rendimiento del flujo de trabajo</p>
+        </div>
+      </div>
+      <button class="refresh-btn" (click)="loadAnalytics()" [disabled]="loading()">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" [class.spin]="loading()">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+        </svg>
+        <span>Recargar</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div class="loading-state" *ngIf="loading()">
+    <div class="spinner"></div>
+    <p>Cargando estadísticas de rendimiento...</p>
+  </div>
+
+  <!-- Error State -->
+  <div class="error-state" *ngIf="error() && !loading()">
+    <div class="error-box">
+      <span class="error-icon">⚠️</span>
+      <p>{{ error() }}</p>
+      <button class="retry-btn" (click)="loadAnalytics()">Intentar de nuevo</button>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <div class="analytics-content" *ngIf="data() && !loading() && !error()">
+    
+    <!-- KPI Grid -->
+    <div class="kpi-grid">
+      <!-- Card 1 -->
+      <div class="kpi-card kpi-card--blue">
+        <div class="kpi-card__header">
+          <span class="kpi-card__title">Trámites Totales</span>
+          <span class="kpi-card__icon">📋</span>
+        </div>
+        <div class="kpi-card__value">{{ data()?.totalProcedures }}</div>
+        <div class="kpi-card__footer">Iniciados en la plataforma</div>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="kpi-card kpi-card--green">
+        <div class="kpi-card__header">
+          <span class="kpi-card__title">Trámites Completados</span>
+          <span class="kpi-card__icon">✅</span>
+        </div>
+        <div class="kpi-card__value">{{ data()?.completedProcedures }}</div>
+        <div class="kpi-card__footer">
+          {{ data()?.totalProcedures ? ((data()?.completedProcedures || 0) / (data()?.totalProcedures || 1) * 100 | number:'1.0-1') : 0 }}% tasa de éxito
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="kpi-card kpi-card--orange">
+        <div class="kpi-card__header">
+          <span class="kpi-card__title">Trámites En Proceso</span>
+          <span class="kpi-card__icon">⏳</span>
+        </div>
+        <div class="kpi-card__value">{{ data()?.inProgressProcedures }}</div>
+        <div class="kpi-card__footer">Activos actualmente</div>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="kpi-card kpi-card--purple">
+        <div class="kpi-card__header">
+          <span class="kpi-card__title">Tareas Completadas</span>
+          <span class="kpi-card__icon">⚙️</span>
+        </div>
+        <div class="kpi-card__value">{{ data()?.totalCompletedTasks }}</div>
+        <div class="kpi-card__footer">Pasos individuales resueltos</div>
+      </div>
+    </div>
+
+    <!-- Highlights / Insights Panels -->
+    <div class="insights-grid">
+      <!-- Bottleneck Alert -->
+      <div class="insight-panel insight-panel--alert">
+        <div class="insight-icon-container">
+          <span class="insight-icon">⚠️</span>
+        </div>
+        <div class="insight-info">
+          <h3>Cuello de Botella Detectado</h3>
+          <p class="insight-desc">La actividad que más tiempo promedio requiere para completarse es:</p>
+          <div class="insight-highlight">{{ data()?.bottleneckNode }}</div>
+          <div class="insight-meta">
+            Promedio: <strong>{{ data()?.avgTimeByNode?.[data()?.bottleneckNode || ''] | number:'1.0-1' }} minutos</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Employee Trophy -->
+      <div class="insight-panel insight-panel--success">
+        <div class="insight-icon-container">
+          <span class="insight-icon">🏆</span>
+        </div>
+        <div class="insight-info">
+          <h3>Funcionario Más Eficiente</h3>
+          <p class="insight-desc">El empleado que completa sus tareas en el menor tiempo promedio es:</p>
+          <div class="insight-highlight">{{ data()?.mostEfficientUser }}</div>
+          <div class="insight-meta">
+            Promedio de resolución: <strong>{{ data()?.avgTimeByUser?.[data()?.mostEfficientUser || ''] | number:'1.0-1' }} minutos</strong>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts / Visualization Section -->
+    <div class="charts-container">
+      
+      <!-- Nodes Time Chart -->
+      <div class="chart-box">
+        <div class="chart-box__header">
+          <h3>⏱️ Tiempo Promedio por Actividad (Nodos)</h3>
+          <span class="chart-box__subtitle">Identifica qué etapas del trámite demoran más (ordenado de lento a rápido)</span>
+        </div>
+        <div class="chart-box__body">
+          <div class="no-data" *ngIf="nodesChart().length === 0">
+            No hay tareas completadas registradas para calcular promedios.
+          </div>
+          
+          <div class="chart-row" *ngFor="let item of nodesChart()">
+            <div class="chart-row-info">
+              <span class="chart-row-name">{{ item.name }}</span>
+              <span class="chart-row-value">{{ item.time | number:'1.0-1' }} min</span>
+            </div>
+            <div class="chart-bar-container">
+              <div class="chart-bar chart-bar--red" [style.width.%]="item.percentage"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Users Efficiency Leaderboard -->
+      <div class="chart-box">
+        <div class="chart-box__header">
+          <h3>🥇 Leaderboard de Eficiencia (Funcionarios)</h3>
+          <span class="chart-box__subtitle">Clasificación por velocidad de resolución promedio (más rápido a más lento)</span>
+        </div>
+        <div class="chart-box__body">
+          <div class="no-data" *ngIf="usersChart().length === 0">
+            No hay registros de funcionarios completando tareas aún.
+          </div>
+
+          <div class="chart-row" *ngFor="let item of usersChart(); let i = index">
+            <div class="chart-row-info">
+              <span class="chart-row-name">
+                <span class="leaderboard-rank" 
+                      [class.rank-gold]="i === 0" 
+                      [class.rank-silver]="i === 1" 
+                      [class.rank-bronze]="i === 2"
+                      [class.rank-other]="i > 2">
+                  {{ i + 1 }}
+                </span>
+                {{ item.name }}
+              </span>
+              <span class="chart-row-value">{{ item.time | number:'1.0-1' }} min</span>
+            </div>
+            <div class="chart-bar-container">
+              <div class="chart-bar chart-bar--green" [style.width.%]="item.percentage"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
