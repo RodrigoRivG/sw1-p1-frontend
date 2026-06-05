@@ -7,10 +7,11 @@ import { FormsModule } from '@angular/forms';
 import { NgIf, NgFor } from '@angular/common';
 import * as joint from '@joint/core';
 import { PolicyService } from '../../core/services/policy.service';
-import { PolicyRequest } from '../../core/models';
+import { PolicyRequest, DbDocument, PermissionLevel } from '../../core/models';
 import { UserService } from '../../core/services/user.service';
 import { WebsocketService } from '../../core/services/websocket.service';
 import { IaService } from '../../core/services/ia.service';
+import { DocumentService } from '../../core/services/document.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NodeType = 'start' | 'end' | 'task' | 'decision' | 'fork' | 'join';
@@ -81,6 +82,15 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   // Paper dimensions (kept in sync between HTML layer and JointJS paper)
   paperWidth = signal(600);
   paperHeight = signal(700);
+
+  // --- Gestor Documental (DMS) ---
+  policyDocuments = signal<DbDocument[]>([]);
+  selectedNodePermissions = signal<Record<string, PermissionLevel>>({});
+  showDocumentsModal = signal(false);
+  newDocName = '';
+  newDocFile: File | null = null;
+  uploadingDoc = signal(false);
+  private docSvc = inject(DocumentService);
 
   // Expose constants to template
   readonly colWidth = COL_WIDTH;
@@ -481,6 +491,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
         this.collaborators.set(p.collaborators || []);
         this.parseDiagram(p.diagram ?? {});
         this.loading.set(false);
+        this.loadDocuments(id);
         this.wsSvc.connect(() => {
           this.wsSvc.subscribe(`/topic/policy/${id}`, (msg) => {
             if (msg) this.parseDiagram(msg);
@@ -727,12 +738,16 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.selectedNodeData.set({ ...data });
     this.selectedNodeEmail.set(data.userEmail ?? '');
     this.emailError.set(null);
+    if (data.type === 'task') {
+      this.loadNodePermissions(nodeId);
+    }
   }
 
   setSelectedProp(prop: string, value: string): void {
     const d = this.selectedNodeData();
     if (!d) return;
     this.selectedNodeData.set({ ...d, [prop]: value });
+    this.updateNode();
   }
 
   resolveEmailAndUpdate(): void {
@@ -1000,5 +1015,121 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.activeDragFormElementId) {
       this.activeDragFormElementId = null;
     }
+  }
+
+  // --- Gestor Documental (DMS) Métodos ---
+  loadDocuments(policyId: string): void {
+    this.docSvc.getDocumentsByPolicy(policyId).subscribe({
+      next: (docs) => {
+        this.policyDocuments.set(docs);
+        const nodeId = this.selectedNodeId();
+        if (nodeId && this.selectedNodeData()?.type === 'task') {
+          this.loadNodePermissions(nodeId);
+        }
+      },
+      error: (err) => console.error('Error loading documents for policy:', err)
+    });
+  }
+
+  openDocumentsModal(): void {
+    const pid = this.policyId();
+    if (!pid) return;
+    this.showDocumentsModal.set(true);
+    this.loadDocuments(pid);
+  }
+
+  closeDocumentsModal(): void {
+    this.showDocumentsModal.set(false);
+    this.newDocName = '';
+    this.newDocFile = null;
+  }
+
+  onFileSelected(event: any): void {
+    const file = event.target.files?.[0];
+    if (file) {
+      this.newDocFile = file;
+      if (!this.newDocName.trim()) {
+        const nameWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+        this.newDocName = nameWithoutExt;
+      }
+    }
+  }
+
+  uploadDocument(): void {
+    const pid = this.policyId();
+    if (!pid || !this.newDocName.trim() || !this.newDocFile) return;
+
+    this.uploadingDoc.set(true);
+    this.docSvc.createDocument(pid, this.newDocName.trim(), this.newDocFile).subscribe({
+      next: () => {
+        this.uploadingDoc.set(false);
+        this.newDocName = '';
+        this.newDocFile = null;
+        this.loadDocuments(pid);
+        alert('Documento subido con éxito.');
+      },
+      error: (err) => {
+        console.error('Error uploading document:', err);
+        this.uploadingDoc.set(false);
+        alert('Error al subir el documento.');
+      }
+    });
+  }
+
+  deleteDocument(docId: string): void {
+    const pid = this.policyId();
+    if (!pid || !confirm('¿Estás seguro de eliminar este documento? Se borrarán todos sus permisos asociados.')) return;
+
+    this.docSvc.deleteDocument(docId).subscribe({
+      next: () => {
+        this.loadDocuments(pid);
+      },
+      error: (err) => {
+        console.error('Error deleting document:', err);
+        alert('Error al eliminar el documento.');
+      }
+    });
+  }
+
+  loadNodePermissions(nodeId: string): void {
+    const docs = this.policyDocuments();
+    const perms: Record<string, PermissionLevel> = {};
+    docs.forEach(doc => {
+      perms[doc.id] = 'NONE';
+    });
+    this.selectedNodePermissions.set(perms);
+
+    docs.forEach(doc => {
+      this.docSvc.getDocumentPermissions(doc.id).subscribe({
+        next: (permissions) => {
+          const match = permissions.find(p => p.nodeId === nodeId);
+          if (match) {
+            this.selectedNodePermissions.update(p => ({
+              ...p,
+              [doc.id]: match.permissionLevel
+            }));
+          }
+        },
+        error: (err) => console.error('Error fetching doc permissions:', err)
+      });
+    });
+  }
+
+  changePermission(docId: string, level: PermissionLevel): void {
+    const nodeId = this.selectedNodeId();
+    if (!nodeId) return;
+
+    this.docSvc.updatePermission(docId, nodeId, level).subscribe({
+      next: () => {
+        this.selectedNodePermissions.update(p => ({
+          ...p,
+          [docId]: level
+        }));
+      },
+      error: (err) => {
+        console.error('Error updating permission:', err);
+        alert('Error al actualizar el permiso del documento.');
+      }
+    });
   }
 }

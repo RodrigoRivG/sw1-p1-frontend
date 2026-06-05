@@ -5,7 +5,11 @@ import { TaskService } from '../../core/services/task.service';
 import { ProcedureService } from '../../core/services/procedure.service';
 import { IaService } from '../../core/services/ia.service';
 import { PolicyService } from '../../core/services/policy.service';
-import { Task, TaskStatus, Procedure } from '../../core/models';
+import { AuthService } from '../../core/services/auth.service';
+import { DocumentService } from '../../core/services/document.service';
+import { WebsocketService } from '../../core/services/websocket.service';
+import { Task, TaskStatus, Procedure, DbDocument, DocumentVersion, PermissionLevel } from '../../core/models';
+import Quill from 'quill';
 
 type TabType = 'pending' | 'in_progress' | 'completed';
 
@@ -39,6 +43,26 @@ export class MonitorComponent implements OnInit {
   selectedTask = signal<TaskViewModel | null>(null);
   observation = signal<string>('');
   completing = signal<boolean>(false);
+
+  // DMS Signals
+  taskDocuments = signal<Array<{ document: DbDocument, permissionLevel: PermissionLevel }>>([]);
+  selectedDocument = signal<DbDocument | null>(null);
+  selectedDocPermission = signal<PermissionLevel>('NONE');
+  loadingDocs = signal<boolean>(false);
+  versionHistory = signal<DocumentVersion[]>([]);
+  loadingHistory = signal<boolean>(false);
+  activeEditors = signal<any[]>([]);
+  showSaveVersionModal = signal(false);
+  newVersionDescription = '';
+  selectedUploadFile: File | null = null;
+  uploadVersionDescription = '';
+  uploadingVersion = signal(false);
+
+  private docSvc = inject(DocumentService);
+  private wsSvc = inject(WebsocketService);
+  private authService = inject(AuthService);
+  private quill: any = null;
+  private stompSubscription: any = null;
 
   // IA State
   draftDescription = signal<string>('');
@@ -118,12 +142,48 @@ export class MonitorComponent implements OnInit {
         error: (err) => console.error('Error loading policy for task form:', err)
       });
     }
+
+    // DMS: Cargar documentos y permisos
+    this.taskDocuments.set([]);
+    this.selectedDocument.set(null);
+    this.selectedDocPermission.set('NONE');
+    if (policyId) {
+      this.loadingDocs.set(true);
+      this.docSvc.getDocumentsByPolicy(policyId).subscribe({
+        next: (docs) => {
+          const docPromises = docs.map(doc => {
+            return new Promise<any>((resolve) => {
+              this.docSvc.getDocumentPermissions(doc.id).subscribe({
+                next: (perms) => {
+                  const perm = perms.find(p => p.nodeId === task.nodeId);
+                  resolve({ document: doc, permissionLevel: perm ? perm.permissionLevel : 'NONE' });
+                },
+                error: () => {
+                  resolve({ document: doc, permissionLevel: 'NONE' as PermissionLevel });
+                }
+              });
+            });
+          });
+
+          Promise.all(docPromises).then(results => {
+            const accessibleDocs = results.filter(r => r.permissionLevel !== 'NONE');
+            this.taskDocuments.set(accessibleDocs);
+            this.loadingDocs.set(false);
+          });
+        },
+        error: (err) => {
+          console.error('Error loading documents:', err);
+          this.loadingDocs.set(false);
+        }
+      });
+    }
   }
 
   closeModal(): void {
     if (this.isRecording()) {
       this.stopRecording();
     }
+    this.cleanupWebSocket();
     this.selectedTask.set(null);
     this.observation.set('');
     this.draftDescription.set('');
@@ -304,6 +364,210 @@ export class MonitorComponent implements OnInit {
       error: () => {
         this.completing.set(false);
         alert('Error al completar la tarea.');
+      }
+    });
+  }
+
+  // --- Gestor Documental (DMS) Métodos ---
+  cleanupWebSocket(): void {
+    if (this.stompSubscription) {
+      this.stompSubscription.unsubscribe();
+      this.stompSubscription = null;
+    }
+    this.activeEditors.set([]);
+  }
+
+  selectDocument(item: { document: DbDocument, permissionLevel: PermissionLevel }): void {
+    this.cleanupWebSocket();
+    this.selectedDocument.set(item.document);
+    this.selectedDocPermission.set(item.permissionLevel);
+    
+    this.versionHistory.set([]);
+    this.quill = null;
+
+    const doc = item.document;
+
+    // Cargar historial de versiones y contenido inicial
+    this.loadVersionHistory(doc.id, (latestContent) => {
+      if (item.permissionLevel === 'EDIT' || item.permissionLevel === 'VIEW') {
+        this.initQuill(latestContent);
+      }
+    });
+
+    // Conectar WebSocket si es edición
+    if (item.permissionLevel === 'EDIT') {
+      const user = this.authService.currentUser();
+      if (user) {
+        this.wsSvc.connect(() => {
+          this.stompSubscription = this.wsSvc.subscribe(`/topic/documents/${doc.id}`, (msg: any) => {
+            if (!msg) return;
+
+            // Listado de usuarios activos
+            if (Array.isArray(msg)) {
+              this.activeEditors.set(msg);
+            } else if (msg.activeUsers && Array.isArray(msg.activeUsers)) {
+              this.activeEditors.set(msg.activeUsers);
+            }
+
+            // Actualización colaborativa del editor
+            if (msg.content !== undefined && msg.senderId !== user.id) {
+              if (this.quill && this.quill.root.innerHTML !== msg.content) {
+                const selection = this.quill.getSelection();
+                this.quill.root.innerHTML = msg.content || '';
+                if (selection) {
+                  this.quill.setSelection(selection.index, selection.length);
+                }
+              }
+            }
+
+            // Notificación de guardado
+            if (msg.type === 'SAVE' || msg.saved || msg.type === 'saved') {
+              this.loadVersionHistory(doc.id);
+            }
+          });
+
+          // Unirse a la sala
+          this.wsSvc.publish(`/app/documents/${doc.id}/join`, {
+            userId: user.id,
+            userName: `${user.firstName} ${user.lastName}`
+          });
+        });
+      }
+    }
+  }
+
+  initQuill(initialContent: string = ''): void {
+    setTimeout(() => {
+      const container = document.getElementById('editor-container');
+      if (!container) return;
+
+      this.quill = new Quill(container, {
+        theme: 'snow',
+        placeholder: 'Comienza a redactar aquí...',
+        readOnly: this.selectedDocPermission() === 'VIEW'
+      });
+
+      this.quill.root.innerHTML = initialContent || '';
+
+      // Enviar ediciones
+      this.quill.on('text-change', (delta: any, oldDelta: any, source: string) => {
+        if (source === 'user') {
+          const doc = this.selectedDocument();
+          if (doc) {
+            const content = this.quill.root.innerHTML;
+            this.wsSvc.publish(`/app/documents/${doc.id}/edit`, {
+              content,
+              senderId: this.authService.currentUser()?.id
+            });
+          }
+        }
+      });
+
+      // Enviar posición del cursor
+      this.quill.on('selection-change', (range: any) => {
+        if (range) {
+          const doc = this.selectedDocument();
+          const user = this.authService.currentUser();
+          if (doc && user) {
+            this.wsSvc.publish(`/app/documents/${doc.id}/cursor`, {
+              userId: user.id,
+              userName: `${user.firstName} ${user.lastName}`,
+              cursorIndex: range.index
+            });
+          }
+        }
+      });
+    }, 100);
+  }
+
+  loadVersionHistory(docId: string, callback?: (content: string) => void): void {
+    this.loadingHistory.set(true);
+    this.docSvc.getVersionHistory(docId).subscribe({
+      next: (versions) => {
+        const sorted = (versions || []).sort((a, b) => b.versionNumber - a.versionNumber);
+        this.versionHistory.set(sorted);
+        this.loadingHistory.set(false);
+
+        if (callback) {
+          const latest = sorted[0];
+          callback(latest?.content || '');
+        }
+      },
+      error: (err) => {
+        console.error('Error fetching version history:', err);
+        this.loadingHistory.set(false);
+        if (callback) callback('');
+      }
+    });
+  }
+
+  openSaveVersionModal(): void {
+    this.newVersionDescription = '';
+    this.showSaveVersionModal.set(true);
+  }
+
+  confirmSaveVersion(): void {
+    const doc = this.selectedDocument();
+    if (!doc || !this.quill) return;
+
+    const content = this.quill.root.innerHTML;
+    this.wsSvc.publish(`/app/documents/${doc.id}/save`, {
+      content,
+      changeDescription: this.newVersionDescription.trim() || 'Actualización colaborativa'
+    });
+    
+    this.showSaveVersionModal.set(false);
+    this.newVersionDescription = '';
+  }
+
+  onUploadFileSelected(event: any): void {
+    const file = event.target.files?.[0];
+    if (file) {
+      this.selectedUploadFile = file;
+    }
+  }
+
+  uploadNewVersion(): void {
+    const doc = this.selectedDocument();
+    if (!doc || !this.selectedUploadFile) return;
+
+    this.uploadingVersion.set(true);
+    this.docSvc.updateDocument(
+      doc.id, 
+      this.selectedUploadFile, 
+      this.uploadVersionDescription.trim() || 'Nueva versión cargada por archivo'
+    ).subscribe({
+      next: () => {
+        this.uploadingVersion.set(false);
+        this.selectedUploadFile = null;
+        this.uploadVersionDescription = '';
+        this.loadVersionHistory(doc.id);
+        alert('Nueva versión de archivo subida correctamente.');
+      },
+      error: (err) => {
+        console.error('Error uploading new version:', err);
+        this.uploadingVersion.set(false);
+        alert('Error al subir la nueva versión.');
+      }
+    });
+  }
+
+  restoreVersion(versionNumber: number): void {
+    const doc = this.selectedDocument();
+    if (!doc || !confirm(`¿Estás seguro de restaurar el documento a la versión ${versionNumber}?`)) return;
+
+    this.docSvc.restoreVersion(doc.id, versionNumber).subscribe({
+      next: () => {
+        alert(`Documento restaurado a la versión ${versionNumber}.`);
+        this.loadVersionHistory(doc.id, (content) => {
+          if (this.quill) {
+            this.quill.root.innerHTML = content;
+          }
+        });
+      },
+      error: (err) => {
+        console.error('Error restoring version:', err);
+        alert('Error al restaurar la versión.');
       }
     });
   }
