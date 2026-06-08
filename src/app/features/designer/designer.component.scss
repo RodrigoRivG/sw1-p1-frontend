@@ -1058,10 +1058,12 @@
       font-weight: 700;
       color: var(--text-primary, #ffffff);
     }
+
     p {
       margin: 0.25rem 0 0 0;
       font-size: 0.85rem;
       color: var(--text-secondary, #94a3b8);
+
       strong {
         color: var(--accent-primary, #5b6ef0);
       }
@@ -1291,7 +1293,7 @@
     line-height: 1;
     opacity: 0;
     transition: opacity 0.15s, transform 0.15s;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
     z-index: 15;
 
     &:hover {

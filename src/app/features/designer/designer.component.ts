@@ -916,7 +916,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!nodeId) return;
     const node = this.nodeMap.get(nodeId);
     if (!node) return;
-    
+
     // Copy the existing form fields or default to empty array safely
     const fields = Array.isArray(node.formFields) ? JSON.parse(JSON.stringify(node.formFields)) : [];
     this.formElements.set(fields);
@@ -927,11 +927,11 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   addFormElement(type: 'label' | 'input'): void {
     const id = `fe-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const text = type === 'label' ? 'Escribe aquí tu mensaje' : 'Escribe tu respuesta aquí';
-    
+
     // Find an empty Y slot
     const x = 50;
     const y = 50 + (this.formElements().length * 40) % 250;
-    
+
     const newElement = {
       id,
       type,
@@ -939,7 +939,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
       y,
       text
     };
-    
+
     console.log('addFormElement adding:', newElement);
     this.formElements.set([...this.formElements(), newElement]);
     this.selectedFormElementId.set(id);
@@ -985,7 +985,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     if (!nodeId) return;
     const node = this.nodeMap.get(nodeId);
     if (!node) return;
-    
+
     node.formFields = this.formElements();
     this.showFormDesigner.set(false);
     this.broadcastUpdate();
@@ -996,14 +996,14 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     if (this.activeDragFormElementId) {
       const deltaX = event.clientX - this.dragStartX;
       const deltaY = event.clientY - this.dragStartY;
-      
+
       let newX = this.elementStartX + deltaX;
       let newY = this.elementStartY + deltaY;
-      
+
       // Snap to 10px grid and clamp within 600x400 canvas bounds
       newX = Math.max(0, Math.min(420, Math.round(newX / 10) * 10));
       newY = Math.max(0, Math.min(350, Math.round(newY / 10) * 10));
-      
+
       this.formElements.set(
         this.formElements().map(el => el.id === this.activeDragFormElementId ? { ...el, x: newX, y: newY } : el)
       );

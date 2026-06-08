@@ -14,6 +14,36 @@ export interface AnalyticsData {
   totalCompletedTasks: number;
 }
 
+export interface ReportFilter {
+  startDate: string | null;
+  endDate: string | null;
+  department: string | null;
+  type: string | null;
+}
+
+export interface ReportProcedure {
+  clientName: string;
+  status: string;
+  createdAt: string;
+  policyName?: string;
+  totalMinutes?: number | string;
+}
+
+export interface DynamicReportData {
+  procedures: ReportProcedure[];
+  totalProcedures: number;
+  period: {
+    from: string;
+    to: string;
+  };
+  department: string;
+}
+
+export interface DynamicReportResponse {
+  filters: ReportFilter;
+  report: DynamicReportData;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AnalyticsService {
   private http = inject(HttpClient);
@@ -21,5 +51,9 @@ export class AnalyticsService {
 
   getAnalytics(): Observable<AnalyticsData> {
     return this.http.get<AnalyticsData>(this.apiUrl);
+  }
+
+  getDynamicReport(query: string): Observable<DynamicReportResponse> {
+    return this.http.post<DynamicReportResponse>(`${this.apiUrl}/report`, { query });
   }
 }

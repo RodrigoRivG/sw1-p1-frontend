@@ -104,9 +104,9 @@
 
       <!-- Footer -->
       <div class="policy-card__footer">
-        <span [class]="statusClass(policy.status)">
+        <!-- <span [class]="statusClass(policy.status)">
           {{ statusLabels[policy.status] ?? policy.status }}
-        </span>
+        </span> -->
         <span class="policy-card__author" *ngIf="policy.createdBy">
           👤 {{ policy.createdBy }}
         </span>

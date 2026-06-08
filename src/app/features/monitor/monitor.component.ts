@@ -62,7 +62,7 @@ export class MonitorComponent implements OnInit {
   private wsSvc = inject(WebsocketService);
   private authService = inject(AuthService);
   private quill: any = null;
-  private stompSubscription: any = null;
+  private stompSubscriptions: any[] = [];
 
   // IA State
   draftDescription = signal<string>('');
@@ -370,10 +370,8 @@ export class MonitorComponent implements OnInit {
 
   // --- Gestor Documental (DMS) Métodos ---
   cleanupWebSocket(): void {
-    if (this.stompSubscription) {
-      this.stompSubscription.unsubscribe();
-      this.stompSubscription = null;
-    }
+    this.stompSubscriptions.forEach(sub => sub?.unsubscribe());
+    this.stompSubscriptions = [];
     this.activeEditors.set([]);
   }
 
@@ -399,18 +397,32 @@ export class MonitorComponent implements OnInit {
       const user = this.authService.currentUser();
       if (user) {
         this.wsSvc.connect(() => {
-          this.stompSubscription = this.wsSvc.subscribe(`/topic/documents/${doc.id}`, (msg: any) => {
-            if (!msg) return;
-
-            // Listado de usuarios activos
-            if (Array.isArray(msg)) {
-              this.activeEditors.set(msg);
-            } else if (msg.activeUsers && Array.isArray(msg.activeUsers)) {
-              this.activeEditors.set(msg.activeUsers);
+          // 1. Suscribirse a la lista de usuarios activos inicial
+          const activeUsersSub = this.wsSvc.subscribe(`/user/queue/documents/${doc.id}/active-users`, (users: any) => {
+            if (Array.isArray(users)) {
+              this.activeEditors.set(users);
             }
+          });
+          if (activeUsersSub) this.stompSubscriptions.push(activeUsersSub);
 
-            // Actualización colaborativa del editor
-            if (msg.content !== undefined && msg.senderId !== user.id) {
+          // 2. Suscribirse a eventos de presencia (JOIN/LEAVE)
+          const presenceSub = this.wsSvc.subscribe(`/topic/documents/${doc.id}/users`, (msg: any) => {
+            if (!msg) return;
+            const currentList = this.activeEditors();
+            if (msg.action === 'JOIN') {
+              if (!currentList.some(u => u.userId === msg.userId)) {
+                this.activeEditors.set([...currentList, { userId: msg.userId, userName: msg.userName, color: msg.color || '#5b6ef0' }]);
+              }
+            } else if (msg.action === 'LEAVE') {
+              this.activeEditors.set(currentList.filter(u => u.userId !== msg.userId));
+            }
+          });
+          if (presenceSub) this.stompSubscriptions.push(presenceSub);
+
+          // 3. Suscribirse a actualizaciones de edición en tiempo real
+          const editsSub = this.wsSvc.subscribe(`/topic/documents/${doc.id}/edits`, (msg: any) => {
+            if (!msg) return;
+            if (msg.content !== undefined && msg.userId !== user.id) {
               if (this.quill && this.quill.root.innerHTML !== msg.content) {
                 const selection = this.quill.getSelection();
                 this.quill.root.innerHTML = msg.content || '';
@@ -419,12 +431,15 @@ export class MonitorComponent implements OnInit {
                 }
               }
             }
-
-            // Notificación de guardado
-            if (msg.type === 'SAVE' || msg.saved || msg.type === 'saved') {
-              this.loadVersionHistory(doc.id);
-            }
           });
+          if (editsSub) this.stompSubscriptions.push(editsSub);
+
+          // 4. Suscribirse a notificaciones de guardado manual
+          const savedSub = this.wsSvc.subscribe(`/topic/documents/${doc.id}/saved`, (msg: any) => {
+            if (!msg) return;
+            this.loadVersionHistory(doc.id);
+          });
+          if (savedSub) this.stompSubscriptions.push(savedSub);
 
           // Unirse a la sala
           this.wsSvc.publish(`/app/documents/${doc.id}/join`, {
@@ -457,7 +472,8 @@ export class MonitorComponent implements OnInit {
             const content = this.quill.root.innerHTML;
             this.wsSvc.publish(`/app/documents/${doc.id}/edit`, {
               content,
-              senderId: this.authService.currentUser()?.id
+              userId: this.authService.currentUser()?.id,
+              userName: `${this.authService.currentUser()?.firstName} ${this.authService.currentUser()?.lastName}`
             });
           }
         }
@@ -472,7 +488,7 @@ export class MonitorComponent implements OnInit {
             this.wsSvc.publish(`/app/documents/${doc.id}/cursor`, {
               userId: user.id,
               userName: `${user.firstName} ${user.lastName}`,
-              cursorIndex: range.index
+              position: range.index
             });
           }
         }

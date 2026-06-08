@@ -26,14 +26,24 @@
     </div>
   </div>
 
+  <!-- Navigation Tabs -->
+  <div class="analytics-tabs">
+    <button class="tab-btn" [class.tab-btn--active]="activeTab() === 'dashboard'" (click)="setTab('dashboard')">
+      📊 Dashboard General
+    </button>
+    <button class="tab-btn" [class.tab-btn--active]="activeTab() === 'report'" (click)="setTab('report')">
+      📝 Reportes Dinámicos
+    </button>
+  </div>
+
   <!-- Loading State -->
-  <div class="loading-state" *ngIf="loading()">
+  <div class="loading-state" *ngIf="loading() && activeTab() === 'dashboard'">
     <div class="spinner"></div>
     <p>Cargando estadísticas de rendimiento...</p>
   </div>
 
   <!-- Error State -->
-  <div class="error-state" *ngIf="error() && !loading()">
+  <div class="error-state" *ngIf="error() && !loading() && activeTab() === 'dashboard'">
     <div class="error-box">
       <span class="error-icon">⚠️</span>
       <p>{{ error() }}</p>
@@ -41,8 +51,8 @@
     </div>
   </div>
 
-  <!-- Main Content -->
-  <div class="analytics-content" *ngIf="data() && !loading() && !error()">
+  <!-- Main Content (Dashboard Tab) -->
+  <div class="analytics-content" *ngIf="data() && !loading() && !error() && activeTab() === 'dashboard'">
     
     <!-- KPI Grid -->
     <div class="kpi-grid">
@@ -182,5 +192,156 @@
 
     </div>
 
+  </div>
+
+  <!-- Dynamic Report Tab -->
+  <div class="analytics-content report-tab-content" *ngIf="activeTab() === 'report'">
+    <!-- Query Area -->
+    <div class="query-card">
+      <div class="query-card__header">
+        <h2>Consultas del Administrador</h2>
+        <p>Escribe o dicta por voz una consulta en lenguaje natural para generar un reporte dinámico de trámites.</p>
+      </div>
+      <div class="query-card__body">
+        <div class="query-input-wrapper">
+          <textarea 
+            class="query-textarea" 
+            [ngModel]="queryText()"
+            (ngModelChange)="queryText.set($event)"
+            (keydown.enter)="$event.preventDefault(); generateReport()"
+            placeholder="Ej: reporte de compras del 1 de mayo al 31 de mayo..."
+            rows="3">
+          </textarea>
+          
+          <div class="query-actions">
+            <button 
+              type="button" 
+              class="mic-btn" 
+              [class.mic-btn--active]="isListeningVoice()" 
+              (click)="toggleVoice()" 
+              [title]="isListeningVoice() ? 'Detener dictado' : 'Iniciar dictado por voz'">
+              <span class="mic-icon">🎤</span>
+              <span class="pulse-ring" *ngIf="isListeningVoice()"></span>
+            </button>
+            
+            <button 
+              type="button" 
+              class="btn-primary generate-btn" 
+              [disabled]="!queryText().trim() || loadingReport()" 
+              (click)="generateReport()">
+              <span *ngIf="!loadingReport()">⚡ Generar Reporte</span>
+              <span *ngIf="loadingReport()" class="spinner spinner--sm"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading State for Report -->
+    <div class="loading-state" *ngIf="loadingReport()">
+      <div class="spinner"></div>
+      <p>Procesando consulta y generando reporte...</p>
+    </div>
+
+    <!-- Error State for Report -->
+    <div class="error-state" *ngIf="reportError() && !loadingReport()">
+      <div class="error-box">
+        <span class="error-icon">⚠️</span>
+        <p>{{ reportError() }}</p>
+      </div>
+    </div>
+
+    <!-- Report Results Area -->
+    <div class="report-results" *ngIf="reportResult() && !loadingReport() && !reportError()">
+      
+      <!-- Badges with Filters Detected -->
+      <div class="filters-detected">
+        <span class="filters-label">Filtros Detectados:</span>
+        <div class="badges-list">
+          <span class="filter-badge filter-badge--period" *ngIf="reportResult()?.filters?.startDate || reportResult()?.filters?.endDate">
+            📅 Período: {{ reportResult()?.filters?.startDate ? (reportResult()?.filters?.startDate | date:'dd/MM/yyyy') : 'Inicio' }} - {{ reportResult()?.filters?.endDate ? (reportResult()?.filters?.endDate | date:'dd/MM/yyyy') : 'Hoy' }}
+          </span>
+          <span class="filter-badge filter-badge--dept" *ngIf="reportResult()?.filters?.department">
+            🏢 Depto: {{ reportResult()?.filters?.department }}
+          </span>
+          <span class="filter-badge filter-badge--type" *ngIf="reportResult()?.filters?.type">
+            🏷️ Tipo: {{ reportResult()?.filters?.type }}
+          </span>
+          <span class="filter-badge filter-badge--empty" *ngIf="!reportResult()?.filters?.startDate && !reportResult()?.filters?.endDate && !reportResult()?.filters?.department && !reportResult()?.filters?.type">
+            🔎 Ninguno (Reporte global)
+          </span>
+        </div>
+      </div>
+
+      <!-- 2 Cards Grid -->
+      <div class="report-cards-grid">
+        <!-- Card 1: Total Procedures -->
+        <div class="kpi-card kpi-card--blue">
+          <div class="kpi-card__header">
+            <span class="kpi-card__title">Total de Trámites</span>
+            <span class="kpi-card__icon">📋</span>
+          </div>
+          <div class="kpi-card__value">{{ reportResult()?.report?.totalProcedures }}</div>
+          <div class="kpi-card__footer">Encontrados para la consulta</div>
+        </div>
+
+        <!-- Card 2: Consulted Department -->
+        <div class="kpi-card kpi-card--purple">
+          <div class="kpi-card__header">
+            <span class="kpi-card__title">Departamento Consultado</span>
+            <span class="kpi-card__icon">🏢</span>
+          </div>
+          <div class="kpi-card__value" style="font-size: 1.6rem; line-height: 2.2rem; padding-top: 0.5rem; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            {{ reportResult()?.report?.department || 'Todos' }}
+          </div>
+          <div class="kpi-card__footer">Filtro organizativo</div>
+        </div>
+      </div>
+
+      <!-- Procedures Table -->
+      <div class="report-table-box">
+        <div class="report-table-box__header">
+          <h3>📋 Listado de Trámites Filtrados</h3>
+          <p>Resultados limpios preparados para exportación</p>
+        </div>
+        <div class="report-table-box__body">
+          <div class="no-data" *ngIf="reportResult()?.report?.procedures?.length === 0">
+            No se encontraron trámites que coincidan con la consulta.
+          </div>
+          
+          <table class="report-table" *ngIf="reportResult()?.report?.procedures?.length! > 0">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Política / Flujo</th>
+                <th>Fecha de Inicio</th>
+                <th>Tiempo Total</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let proc of reportResult()?.report?.procedures">
+                <td class="td-client">
+                  <span class="client-avatar">👤</span>
+                  <span class="client-name">{{ proc.clientName }}</span>
+                </td>
+                <td class="td-policy">{{ proc.policyName || 'N/A' }}</td>
+                <td class="td-date">{{ proc.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                <td class="td-time">
+                  <span *ngIf="proc.totalMinutes === 'En proceso'" class="badge-status badge-status--process">⏳ En proceso</span>
+                  <span *ngIf="proc.totalMinutes !== 'En proceso'">⏱️ {{ proc.totalMinutes }} min</span>
+                </td>
+                <td class="td-status">
+                  <span class="badge-status" [class.badge-status--completed]="proc.status === 'completed'" [class.badge-status--active]="proc.status === 'in_progress' || proc.status === 'pending'">
+                    {{ proc.status === 'completed' ? 'Completado' : 'Activo' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
   </div>
 </div>
