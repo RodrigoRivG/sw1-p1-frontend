@@ -4,7 +4,7 @@ import {
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { NgIf, NgFor } from '@angular/common';
+import { NgIf, NgFor, PercentPipe } from '@angular/common';
 import * as joint from '@joint/core';
 import { PolicyService } from '../../core/services/policy.service';
 import { PolicyRequest, DbDocument, PermissionLevel } from '../../core/models';
@@ -12,6 +12,8 @@ import { UserService } from '../../core/services/user.service';
 import { WebsocketService } from '../../core/services/websocket.service';
 import { IaService } from '../../core/services/ia.service';
 import { DocumentService } from '../../core/services/document.service';
+import { AnalyticsService } from '../../core/services/analytics.service';
+import { PredictionService, BestRouteResponse } from '../../core/services/prediction.service';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type NodeType = 'start' | 'end' | 'task' | 'decision' | 'fork' | 'join';
@@ -35,6 +37,7 @@ const COLORS = ['#5b6ef0', '#10d9a0', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 export const COL_WIDTH = 220;   // px width of each swimlane column
+// HEADER_H = 44;    // px height of swimlane header strip
 export const HEADER_H = 44;    // px height of swimlane header strip
 export const ROW_SPACING = 110;   // px vertical gap between node rows
 export const START_Y = 70;    // first node Y offset (below header)
@@ -52,7 +55,7 @@ const NODE_SIZE: Record<NodeType, { w: number; h: number }> = {
 @Component({
   selector: 'app-designer',
   standalone: true,
-  imports: [NgIf, NgFor, FormsModule, RouterLink],
+  imports: [NgIf, NgFor, FormsModule, RouterLink, PercentPipe],
   templateUrl: './designer.component.html',
   styleUrl: './designer.component.scss'
 })
@@ -66,6 +69,9 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   private userSvc = inject(UserService);
   private wsSvc = inject(WebsocketService);
   private iaSvc = inject(IaService);
+  private docSvc = inject(DocumentService);
+  private analyticsSvc = inject(AnalyticsService);
+  private predictionSvc = inject(PredictionService);
   private zone = inject(NgZone);
 
   // ── Policy meta ───────────────────────────────────────────────
@@ -73,6 +79,10 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   policyName = signal('Nueva Política');
   policyDesc = signal('');
   loading = signal(false);
+
+  // Best Route Recommendation Signals
+  bestRouteSuggestion = signal<BestRouteResponse | null>(null);
+  nodeAvgTimesMap = new Map<string, number>();
   saving = signal(false);
 
   // ── Diagram data ──────────────────────────────────────────────
@@ -90,7 +100,6 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   newDocName = '';
   newDocFile: File | null = null;
   uploadingDoc = signal(false);
-  private docSvc = inject(DocumentService);
 
   // Expose constants to template
   readonly colWidth = COL_WIDTH;
@@ -167,6 +176,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
       this.loadPolicy(id);
     }
     this.initSpeechRecognition();
+    this.loadAnalyticsData();
   }
 
   ngAfterViewInit(): void {
@@ -553,6 +563,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     } finally {
       this.isParsing = false;
     }
+    this.calculateBestRouteSuggestion();
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -563,6 +574,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     const id = this.policyId();
     if (!id) return;
     this.wsSvc.publish(`/app/policy/${id}/update`, this.buildDiagramPayload());
+    this.calculateBestRouteSuggestion();
   }
 
   private buildDiagramPayload(): Record<string, unknown> {
@@ -1129,6 +1141,108 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
       error: (err) => {
         console.error('Error updating permission:', err);
         alert('Error al actualizar el permiso del documento.');
+      }
+    });
+  }
+
+  // --- Deep Learning Predictions ---
+
+  loadAnalyticsData(): void {
+    this.analyticsSvc.getAnalytics().subscribe({
+      next: (res) => {
+        if (res && res.avgTimeByNode) {
+          Object.entries(res.avgTimeByNode).forEach(([key, val]) => {
+            this.nodeAvgTimesMap.set(key, Number(val));
+          });
+        }
+      },
+      error: (err) => console.error('Error loading analytics for designer:', err)
+    });
+  }
+
+  traceRoute(startNodeId: string): any[] {
+    const routeNodes: any[] = [];
+    const visited = new Set<string>();
+    let currentId: string | undefined = startNodeId;
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId);
+      const node = this.nodeMap.get(currentId);
+      if (!node) break;
+
+      // Stop if we reach a join or end node
+      if (node.type === 'join' || node.type === 'end') {
+        break;
+      }
+
+      routeNodes.push(node);
+
+      // Find outgoing edges
+      const outgoing = [...this.edgeMap.values()].filter(e => e.source === currentId);
+      if (outgoing.length === 0) {
+        break;
+      }
+
+      // Pick the first target (or follow sequential path)
+      currentId = outgoing[0].target;
+    }
+
+    return routeNodes;
+  }
+
+  calculateBestRouteSuggestion(): void {
+    const forkNode = [...this.nodeMap.values()].find(n => n.type === 'fork');
+    if (!forkNode) {
+      this.bestRouteSuggestion.set(null);
+      return;
+    }
+
+    const outgoingEdges = [...this.edgeMap.values()].filter(e => e.source === forkNode.id);
+    if (outgoingEdges.length < 2) {
+      this.bestRouteSuggestion.set(null);
+      return;
+    }
+
+    // Trace both branches
+    const branchAStart = outgoingEdges[0].target;
+    const branchBStart = outgoingEdges[1].target;
+
+    const routeANodes = this.traceRoute(branchAStart);
+    const routeBNodes = this.traceRoute(branchBStart);
+
+    const tasksA = routeANodes.filter(n => n.type === 'task');
+    const tasksB = routeBNodes.filter(n => n.type === 'task');
+
+    const routeANodesCount = tasksA.length;
+    const routeBNodesCount = tasksB.length;
+
+    // Calculate average node times (lookup from analytics or default 60.0)
+    let routeATimeSum = 0;
+    tasksA.forEach(t => {
+      routeATimeSum += this.nodeAvgTimesMap.get(t.label) ?? 60.0;
+    });
+    const routeAAvgTime = routeANodesCount > 0 ? (routeATimeSum / routeANodesCount) : 60.0;
+
+    let routeBTimeSum = 0;
+    tasksB.forEach(t => {
+      routeBTimeSum += this.nodeAvgTimesMap.get(t.label) ?? 60.0;
+    });
+    const routeBAvgTime = routeBNodesCount > 0 ? (routeBTimeSum / routeBNodesCount) : 60.0;
+
+    this.predictionSvc.predictBestRoute({
+      route_a_avg_time: routeAAvgTime,
+      route_b_avg_time: routeBAvgTime,
+      route_a_load: 0.5,
+      route_b_load: 0.5,
+      route_a_nodes: routeANodesCount,
+      route_b_nodes: routeBNodesCount
+    }).subscribe({
+      next: (res) => {
+        this.bestRouteSuggestion.set(res);
+      },
+      error: (err) => {
+        console.error('Error predicting best route:', err);
+        this.bestRouteSuggestion.set(null);
       }
     });
   }

@@ -300,9 +300,19 @@
 
       <!-- Procedures Table -->
       <div class="report-table-box">
-        <div class="report-table-box__header">
-          <h3>📋 Listado de Trámites Filtrados</h3>
-          <p>Resultados limpios preparados para exportación</p>
+        <div class="report-table-box__header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+          <div>
+            <h3>📋 Listado de Trámites Filtrados</h3>
+            <p>Resultados limpios preparados para exportación</p>
+          </div>
+          <button class="btn-primary" 
+                  [disabled]="analyzingAnomalies() || reportResult()?.report?.procedures?.length === 0" 
+                  (click)="detectAnomalies()"
+                  style="font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 8px; margin-right: 1rem;">
+            <span *ngIf="!analyzingAnomalies()">🔍 Detectar Anomalías</span>
+            <span *ngIf="analyzingAnomalies()" class="spinner spinner--sm"></span>
+            <span *ngIf="analyzingAnomalies()"> Analizando...</span>
+          </button>
         </div>
         <div class="report-table-box__body">
           <div class="no-data" *ngIf="reportResult()?.report?.procedures?.length === 0">
@@ -316,6 +326,7 @@
                 <th>Política / Flujo</th>
                 <th>Fecha de Inicio</th>
                 <th>Tiempo Total</th>
+                <th>Anomalía (DL)</th>
                 <th>Estado</th>
               </tr>
             </thead>
@@ -330,6 +341,15 @@
                 <td class="td-time">
                   <span *ngIf="proc.totalMinutes === 'En proceso'" class="badge-status badge-status--process">⏳ En proceso</span>
                   <span *ngIf="proc.totalMinutes !== 'En proceso'">⏱️ {{ proc.totalMinutes }} min</span>
+                </td>
+                <td class="td-anomaly">
+                  <span *ngIf="!getAnomalyResult(proc.id)" class="badge-anomaly badge-anomaly--none">-</span>
+                  <span *ngIf="getAnomalyResult(proc.id) as res" class="badge-anomaly"
+                        [class.badge-anomaly--normal]="res.severity === 'normal'"
+                        [class.badge-anomaly--media]="res.severity === 'media'"
+                        [class.badge-anomaly--alta]="res.severity === 'alta'">
+                    {{ res.severity | uppercase }}
+                  </span>
                 </td>
                 <td class="td-status">
                   <span class="badge-status" [class.badge-status--completed]="proc.status === 'completed'" [class.badge-status--active]="proc.status === 'in_progress' || proc.status === 'pending'">

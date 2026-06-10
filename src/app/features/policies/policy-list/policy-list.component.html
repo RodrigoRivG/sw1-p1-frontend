@@ -124,6 +124,25 @@
       <button class="close-btn" (click)="closeStartProcedureModal()">✕</button>
     </div>
     <div class="modal-body">
+      <!-- Delay Risk Card -->
+      <div class="delay-risk-card" *ngIf="loadingDelayRisk() || delayRiskResult()">
+        <div class="delay-risk-card__loading" *ngIf="loadingDelayRisk()">
+          <span class="spinner spinner--sm"></span> Calculando riesgo de demora...
+        </div>
+        <div class="delay-risk-card__content" *ngIf="delayRiskResult() && !loadingDelayRisk()">
+          <div class="delay-risk-title">⚡ Riesgo de Demora Estimado (DL)</div>
+          <div class="delay-risk-body">
+            <span class="risk-badge" 
+                  [class.risk-badge--low]="delayRiskResult()?.risk_level === 'bajo'"
+                  [class.risk-badge--medium]="delayRiskResult()?.risk_level === 'medio'"
+                  [class.risk-badge--high]="delayRiskResult()?.risk_level === 'alto'">
+              Riesgo {{ delayRiskResult()?.risk_level | uppercase }}
+            </span>
+            <span class="risk-score">Probabilidad: {{ (delayRiskResult()?.delay_risk ?? 0) * 100 | number:'1.0-1' }}%</span>
+          </div>
+        </div>
+      </div>
+
       <div class="form-group">
         <label>Nombre del Cliente *</label>
         <input type="text" [value]="procedureForm().clientName" (input)="updateForm('clientName', $event)" placeholder="Ej. Juan Pérez">

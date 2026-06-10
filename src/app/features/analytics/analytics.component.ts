@@ -1,7 +1,12 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { NgIf, NgFor, DecimalPipe, DatePipe } from '@angular/common';
+import { NgIf, NgFor, DecimalPipe, DatePipe, UpperCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AnalyticsService, AnalyticsData, DynamicReportResponse } from '../../core/services/analytics.service';
+import { PolicyService } from '../../core/services/policy.service';
+import { PredictionService, AnomalyResponse } from '../../core/services/prediction.service';
+import { Policy } from '../../core/models';
+import { forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators';
 
 interface ChartItem {
   name: string;
@@ -12,12 +17,14 @@ interface ChartItem {
 @Component({
   selector: 'app-analytics',
   standalone: true,
-  imports: [NgIf, NgFor, DecimalPipe, DatePipe, FormsModule],
+  imports: [NgIf, NgFor, DecimalPipe, DatePipe, UpperCasePipe, FormsModule],
   templateUrl: './analytics.component.html',
   styleUrl: './analytics.component.scss'
 })
 export class AnalyticsComponent implements OnInit {
   private analyticsSvc = inject(AnalyticsService);
+  private policySvc = inject(PolicyService);
+  private predictionSvc = inject(PredictionService);
 
   // Tab State
   activeTab = signal<'dashboard' | 'report'>('dashboard');
@@ -33,6 +40,11 @@ export class AnalyticsComponent implements OnInit {
   reportResult = signal<DynamicReportResponse | null>(null);
   reportError = signal<string | null>(null);
   isListeningVoice = signal<boolean>(false);
+
+  // Policies Map & Anomaly detection
+  policiesMap = new Map<string, Policy>();
+  anomalyResults = signal<Record<string, AnomalyResponse>>({});
+  analyzingAnomalies = signal<boolean>(false);
   private recognition: any = null;
 
   // Computed properties for charts (General Dashboard)
@@ -75,6 +87,7 @@ export class AnalyticsComponent implements OnInit {
   ngOnInit(): void {
     this.loadAnalytics();
     this.initSpeechRecognition();
+    this.loadPolicies();
   }
 
   setTab(tab: 'dashboard' | 'report'): void {
@@ -128,6 +141,7 @@ export class AnalyticsComponent implements OnInit {
 
     this.loadingReport.set(true);
     this.reportError.set(null);
+    this.anomalyResults.set({}); // Clear previous anomaly results
     this.analyticsSvc.getDynamicReport(q).subscribe({
       next: (res) => {
         this.reportResult.set(res);
@@ -142,5 +156,67 @@ export class AnalyticsComponent implements OnInit {
         this.loadingReport.set(false);
       }
     });
+  }
+
+  loadPolicies(): void {
+    this.policySvc.getAll().subscribe({
+      next: (list) => {
+        list.forEach(p => this.policiesMap.set(p.id, p));
+      },
+      error: (err) => console.error('Error loading policies for analytics:', err)
+    });
+  }
+
+  detectAnomalies(): void {
+    const result = this.reportResult();
+    if (!result || !result.report || !result.report.procedures) return;
+
+    const inProgress = result.report.procedures.filter(p => p.status === 'in_progress');
+    if (inProgress.length === 0) {
+      alert('No hay trámites en proceso para analizar.');
+      return;
+    }
+
+    this.analyzingAnomalies.set(true);
+
+    const requests = inProgress.map(proc => {
+      const policyId = (proc as any).policyId;
+      const policy = policyId ? this.policiesMap.get(policyId) : null;
+      
+      const nodes = (policy?.diagram?.['nodes'] as any[]) || [];
+      const numNodes = nodes.filter(n => n.data?.type === 'task').length;
+      const numParallel = nodes.filter(n => n.data?.type === 'fork').length;
+
+      return this.predictionSvc.predictAnomaly({
+        num_nodes: numNodes || 5,
+        num_parallel: numParallel || 0,
+        avg_node_time: 60,
+        department_load: 0.5
+      }).pipe(
+        catchError(err => {
+          console.error(`Error predicting anomaly for procedure ${proc.clientName}:`, err);
+          return of({ anomaly_score: 0, is_anomaly: false, severity: 'normal' } as AnomalyResponse);
+        })
+      );
+    });
+
+    forkJoin(requests).subscribe({
+      next: (responses) => {
+        const resultsMap: Record<string, AnomalyResponse> = { ...this.anomalyResults() };
+        inProgress.forEach((proc, idx) => {
+          resultsMap[(proc as any).id] = responses[idx];
+        });
+        this.anomalyResults.set(resultsMap);
+        this.analyzingAnomalies.set(false);
+      },
+      error: (err) => {
+        console.error('Error in forkJoin for anomaly detection:', err);
+        this.analyzingAnomalies.set(false);
+      }
+    });
+  }
+
+  getAnomalyResult(procId: string | undefined): AnomalyResponse | undefined {
+    return procId ? this.anomalyResults()[procId] : undefined;
   }
 }

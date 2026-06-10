@@ -86,6 +86,14 @@
         <button class="placement-banner__cancel" (click)="activePlacementType.set(null)">Cancelar</button>
       </div>
 
+      <!-- AI Best Route Suggestion Banner -->
+      <div class="route-banner" *ngIf="bestRouteSuggestion()">
+        <span class="route-banner__text">
+          💡 <strong>Sugerencia de Ruta (IA):</strong> {{ bestRouteSuggestion()?.explanation }} 
+          (Rama recomendada: <span class="badge-route-recom">{{ bestRouteSuggestion()?.best_route }}</span> con {{ bestRouteSuggestion()?.confidence | percent:'1.0-0' }} de confianza)
+        </span>
+      </div>
+
       <!-- Scrollable wrapper -->
       <div class="canvas-scroll">
 

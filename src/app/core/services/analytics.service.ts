@@ -22,6 +22,8 @@ export interface ReportFilter {
 }
 
 export interface ReportProcedure {
+  id?: string;
+  policyId?: string;
   clientName: string;
   status: string;
   createdAt: string;

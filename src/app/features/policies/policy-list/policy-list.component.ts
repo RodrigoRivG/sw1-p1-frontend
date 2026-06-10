@@ -1,17 +1,18 @@
 import { Component, inject, signal, OnInit } from '@angular/core';
 import { Router } from '@angular/router';
-import { NgIf, NgFor, NgClass } from '@angular/common';
+import { NgIf, NgFor, NgClass, DecimalPipe, UpperCasePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { forkJoin } from 'rxjs';
 import { PolicyService } from '../../../core/services/policy.service';
 import { AuthService } from '../../../core/services/auth.service';
 import { ProcedureService } from '../../../core/services/procedure.service';
+import { PredictionService, DelayRiskResponse } from '../../../core/services/prediction.service';
 import { Policy, PolicyStatus } from '../../../core/models';
 
 @Component({
   selector: 'app-policy-list',
   standalone: true,
-  imports: [NgIf, NgFor, NgClass, FormsModule],
+  imports: [NgIf, NgFor, NgClass, FormsModule, DecimalPipe, UpperCasePipe],
   templateUrl: './policy-list.component.html',
   styleUrl: './policy-list.component.scss'
 })
@@ -20,6 +21,7 @@ export class PolicyListComponent implements OnInit {
   private router = inject(Router);
   private authService = inject(AuthService);
   private procedureService = inject(ProcedureService);
+  private predictionService = inject(PredictionService);
 
   policies = signal<Policy[]>([]);
   filteredPolicies = signal<Policy[]>([]);
@@ -40,6 +42,10 @@ export class PolicyListComponent implements OnInit {
   });
   submittingProcedure = signal<boolean>(false);
   successMessage = signal<string | null>(null);
+
+  // Deep Learning Signals
+  delayRiskResult = signal<DelayRiskResponse | null>(null);
+  loadingDelayRisk = signal<boolean>(false);
 
   readonly statusLabels: Record<PolicyStatus, string> = {
     DRAFT:    'Borrador',
@@ -135,11 +141,41 @@ export class PolicyListComponent implements OnInit {
     this.procedureForm.set({ clientName: '', clientEmail: '', clientDetails: '' });
     this.showStartProcedureModal.set(true);
     this.successMessage.set(null);
+
+    // Deep Learning prediction for Delay Risk
+    const policy = this.policies().find(p => p.id === policyId);
+    if (policy && policy.diagram) {
+      const nodes = (policy.diagram['nodes'] as any[]) || [];
+      const numNodes = nodes.filter(n => n.data?.type === 'task').length;
+      const numParallel = nodes.filter(n => n.data?.type === 'fork').length;
+
+      this.delayRiskResult.set(null);
+      this.loadingDelayRisk.set(true);
+      this.predictionService.predictDelayRisk({
+        num_nodes: numNodes,
+        num_parallel: numParallel,
+        avg_node_time: 60,
+        department_load: 0.5
+      }).subscribe({
+        next: (res) => {
+          this.delayRiskResult.set(res);
+          this.loadingDelayRisk.set(false);
+        },
+        error: (err) => {
+          console.error('Error predicting delay risk:', err);
+          this.loadingDelayRisk.set(false);
+        }
+      });
+    } else {
+      this.delayRiskResult.set(null);
+    }
   }
 
   closeStartProcedureModal(): void {
     this.showStartProcedureModal.set(false);
     this.selectedPolicyForProcedure.set(null);
+    this.delayRiskResult.set(null);
+    this.loadingDelayRisk.set(false);
   }
 
   updateForm(field: 'clientName' | 'clientEmail' | 'clientDetails', event: Event): void {
