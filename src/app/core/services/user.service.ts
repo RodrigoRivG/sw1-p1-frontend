@@ -21,4 +21,8 @@ export class UserService {
       { params }
     );
   }
+
+  getAll(): Observable<BasicUser[]> {
+    return this.http.get<BasicUser[]>(`${environment.apiUrl}/users`);
+  }
 }

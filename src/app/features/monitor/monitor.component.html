@@ -125,7 +125,8 @@
 
 <!-- Modal para completar tarea -->
 <div class="modal-overlay" *ngIf="selectedTask()" (click)="closeModal()">
-  <div class="modal-content" [class.modal-content--wide]="formElements().length > 0 || taskDocuments().length > 0" (click)="$event.stopPropagation()">
+  <div class="modal-content" [class.modal-content--wide]="formElements().length > 0 || taskDocuments().length > 0"
+    (click)="$event.stopPropagation()">
     <div class="modal-header">
       <h2>Completar Tarea</h2>
       <button class="close-btn" (click)="closeModal()">✕</button>
@@ -141,17 +142,13 @@
         <label class="form-canvas-label">Formulario de la Actividad</label>
         <div class="form-viewer-canvas" [style.width.px]="600" [style.height.px]="400">
           <div class="form-viewer-canvas__grid"></div>
-          
-          <div *ngFor="let el of formElements()" 
-               [class.fd-el]="true"
-               [class.fd-el--label]="el.type === 'label'"
-               [class.fd-el--input]="el.type === 'input'"
-               [style.left.px]="el.x"
-               [style.top.px]="el.y">
-            
+
+          <div *ngFor="let el of formElements()" [class.fd-el]="true" [class.fd-el--label]="el.type === 'label'"
+            [class.fd-el--input]="el.type === 'input'" [style.left.px]="el.x" [style.top.px]="el.y">
+
             <!-- Label Element -->
             <span *ngIf="el.type === 'label'" class="fd-el__label-text">{{ el.text }}</span>
-            
+
             <!-- Input Element -->
             <div *ngIf="el.type === 'input'" class="fd-el__input-container">
               <input class="form-canvas-input" type="text" [placeholder]="el.text" [(ngModel)]="formValues[el.id]" />
@@ -197,25 +194,29 @@
       </div>
 
       <!-- DMS: Gestión Documental de la Tarea -->
-      <div class="dms-section" *ngIf="taskDocuments().length > 0" style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
-        <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; font-weight: 600; color: var(--accent-primary);">Documentos de la Tarea</h3>
-        
+      <div class="dms-section" *ngIf="taskDocuments().length > 0"
+        style="margin-top: 1.5rem; border-top: 1px solid var(--border-color); padding-top: 1.5rem;">
+        <h3 style="margin: 0 0 1rem 0; font-size: 1.05rem; font-weight: 600; color: var(--accent-primary);">Documentos
+          de la Tarea</h3>
+
         <div class="dms-layout" style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
           <!-- Left side: List of accessible documents -->
-          <div class="dms-sidebar" style="flex: 1; min-width: 180px; max-width: 220px; border-right: 1px solid var(--border-color); padding-right: 1rem;">
+          <div class="dms-sidebar"
+            style="flex: 1; min-width: 180px; max-width: 220px; border-right: 1px solid var(--border-color); padding-right: 1rem;">
             <div class="dms-list" style="display: flex; flex-direction: column; gap: 0.5rem;">
-              <button *ngFor="let item of taskDocuments()" 
-                      type="button"
-                      class="dms-item-btn" 
-                      [class.dms-item-btn--active]="selectedDocument()?.id === item.document.id"
-                      (click)="selectDocument(item)"
-                      style="display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.02); color: var(--text-primary); cursor: pointer; text-align: left; transition: all 0.2s;"
-                      onmouseover="this.style.background='rgba(255, 255, 255, 0.05)'"
-                      onmouseout="if(this.className.indexOf('active') === -1) this.style.background='rgba(255, 255, 255, 0.02)'">
-                <span style="font-size: 0.85rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">📄 {{ item.document.name }}</span>
-                <span class="badge-permission" style="font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.3rem; border-radius: 4px; text-transform: uppercase;"
-                      [style.background]="item.permissionLevel === 'EDIT' ? 'rgba(16, 185, 129, 0.15)' : (item.permissionLevel === 'UPLOAD' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)')"
-                      [style.color]="item.permissionLevel === 'EDIT' ? '#10b981' : (item.permissionLevel === 'UPLOAD' ? '#f59e0b' : '#3b82f6')">
+              <button *ngFor="let item of taskDocuments()" type="button" class="dms-item-btn"
+                [class.dms-item-btn--active]="selectedDocument()?.id === item.document.id"
+                (click)="selectDocument(item)"
+                style="display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.8rem; border-radius: 6px; border: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.02); color: var(--text-primary); cursor: pointer; text-align: left; transition: all 0.2s;"
+                onmouseover="this.style.background='rgba(255, 255, 255, 0.05)'"
+                onmouseout="if(this.className.indexOf('active') === -1) this.style.background='rgba(255, 255, 255, 0.02)'">
+                <span
+                  style="font-size: 0.85rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 120px;">📄
+                  {{ item.document.name }}</span>
+                <span class="badge-permission"
+                  style="font-size: 0.65rem; font-weight: 700; padding: 0.1rem 0.3rem; border-radius: 4px; text-transform: uppercase;"
+                  [style.background]="item.permissionLevel === 'EDIT' ? 'rgba(16, 185, 129, 0.15)' : (item.permissionLevel === 'UPLOAD' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(59, 130, 246, 0.15)')"
+                  [style.color]="item.permissionLevel === 'EDIT' ? '#10b981' : (item.permissionLevel === 'UPLOAD' ? '#f59e0b' : '#3b82f6')">
                   {{ item.permissionLevel }}
                 </span>
               </button>
@@ -223,77 +224,117 @@
           </div>
 
           <!-- Right side: Selected document workspace -->
-          <div class="dms-workspace" style="flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 1rem;">
-            
-            <div *ngIf="!selectedDocument()" style="display: flex; align-items: center; justify-content: center; height: 200px; border: 1px dashed var(--border-color); border-radius: 8px; color: var(--text-secondary); font-size: 0.9rem;">
+          <div class="dms-workspace"
+            style="flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 1rem;">
+
+            <div *ngIf="!selectedDocument()"
+              style="display: flex; align-items: center; justify-content: center; height: 200px; border: 1px dashed var(--border-color); border-radius: 8px; color: var(--text-secondary); font-size: 0.9rem;">
               Selecciona un documento de la lista para ver o editar.
             </div>
 
-            <div *ngIf="selectedDocument()" class="dms-editor-area" style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div *ngIf="selectedDocument()" class="dms-editor-area"
+              [class.dms-editor-area--maximized]="editorMaximized()"
+              style="display: flex; flex-direction: column; gap: 0.75rem;">
               <!-- Doc Meta info -->
-              <div class="dms-doc-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
+              <div class="dms-doc-header"
+                style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">
                 <span style="font-weight: 600; font-size: 0.95rem;">📄 {{ selectedDocument()?.name }}</span>
-                <span style="font-size: 0.75rem; color: var(--text-secondary);">Permiso: <strong>{{ selectedDocPermission() }}</strong></span>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span style="font-size: 0.75rem; color: var(--text-secondary);">Permiso: <strong>{{
+                      selectedDocPermission() }}</strong></span>
+                  <!-- Botón Maximizar / Pantalla Completa -->
+                  <button *ngIf="selectedDocPermission() === 'EDIT' || selectedDocPermission() === 'VIEW'" type="button"
+                    (click)="toggleEditorMaximize()" class="btn-maximize-toggle"
+                    [title]="editorMaximized() ? 'Salir de pantalla completa' : 'Pantalla completa'"
+                    style="background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px 8px; border-radius: 6px; font-size: 0.8rem; gap: 4px; transition: all 0.2s;"
+                    onmouseover="this.style.background='var(--accent-primary)'; this.style.borderColor='var(--accent-primary)'; this.style.color='white'"
+                    onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-primary)'">
+                    <span>{{ editorMaximized() ? '🗗 Salir' : '⛶ Pantalla Completa' }}</span>
+                  </button>
+                </div>
               </div>
 
               <!-- Active Editors row (if EDIT) -->
-              <div class="active-editors-row" *ngIf="selectedDocPermission() === 'EDIT' && activeEditors().length > 0" style="display: flex; align-items: center; gap: 0.5rem; background: rgba(16, 185, 129, 0.05); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.1);">
+              <div class="active-editors-row" *ngIf="selectedDocPermission() === 'EDIT' && activeEditors().length > 0"
+                style="display: flex; align-items: center; gap: 0.5rem; background: rgba(16, 185, 129, 0.05); padding: 0.5rem; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.1);">
                 <span style="font-size: 0.75rem; color: #34d399; font-weight: 500;">✏️ Usuarios editando ahora:</span>
                 <div class="editors-avatars" style="display: flex; gap: 6px;">
-                  <span *ngFor="let ed of activeEditors()" 
-                        class="editor-avatar" 
-                        [title]="ed.userName"
-                        style="background: #10b981; color: white; font-size: 0.7rem; font-weight: 700; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--bg-surface);">
-                    {{ ed.userName.substring(0, 2).toUpperCase() }}
+                  <span *ngFor="let ed of activeEditors()" class="editor-avatar" [title]="getUserName(ed.userId)"
+                    style="background: #10b981; color: white; font-size: 0.7rem; font-weight: 700; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--bg-surface);">
+                    {{ getUserName(ed.userId).substring(0, 2).toUpperCase() }}
                   </span>
                 </div>
               </div>
 
               <!-- Text Editor (VIEW/EDIT) -->
-              <div class="editor-wrapper" *ngIf="selectedDocPermission() === 'EDIT' || selectedDocPermission() === 'VIEW'">
-                <div id="editor-container" style="height: 250px; background: white; color: #1e293b; border-radius: 6px; border: 1px solid var(--border-color); overflow: hidden;"></div>
-                
+              <div class="editor-wrapper"
+                *ngIf="selectedDocPermission() === 'EDIT' || selectedDocPermission() === 'VIEW'">
+                <div id="editor-container"
+                  style="height: 250px; background: white; color: #1e293b; border-radius: 6px; border: 1px solid var(--border-color); overflow: hidden;">
+                </div>
+
                 <!-- Editor actions (EDIT) -->
-                <div class="editor-actions" *ngIf="selectedDocPermission() === 'EDIT'" style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
-                  <button type="button" class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.8rem;" (click)="openSaveVersionModal()">💾 Guardar Nueva Versión</button>
+                <div class="editor-actions" *ngIf="selectedDocPermission() === 'EDIT'"
+                  style="display: flex; justify-content: flex-end; margin-top: 0.5rem;">
+                  <button type="button" class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.8rem;"
+                    (click)="openSaveVersionModal()">Guardar Nueva Versión</button>
                 </div>
               </div>
 
               <!-- File Uploader (UPLOAD) -->
-              <div class="uploader-wrapper" *ngIf="selectedDocPermission() === 'UPLOAD'" style="padding: 1rem; border: 1px dashed var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.01); display: flex; flex-direction: column; gap: 0.75rem;">
-                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">Este documento requiere que subas una nueva versión del archivo:</p>
-                
+              <div class="uploader-wrapper" *ngIf="selectedDocPermission() === 'UPLOAD'"
+                style="padding: 1rem; border: 1px dashed var(--border-color); border-radius: 8px; background: rgba(255,255,255,0.01); display: flex; flex-direction: column; gap: 0.75rem;">
+                <p style="margin: 0; font-size: 0.85rem; color: var(--text-secondary);">Este documento requiere que
+                  subas una nueva versión del archivo:</p>
+
                 <div class="form-field">
-                  <input type="file" class="form-field__input" (change)="onUploadFileSelected($event)" style="padding-top: 0.4rem; font-size: 0.8rem;" />
+                  <input type="file" class="form-field__input" (change)="onUploadFileSelected($event)"
+                    style="padding-top: 0.4rem; font-size: 0.8rem;" />
                 </div>
-                
+
                 <div class="form-field">
-                  <input class="form-field__input" style="height: 32px; font-size: 0.8rem;" [(ngModel)]="uploadVersionDescription" placeholder="Descripción de los cambios realizados..." />
+                  <input class="form-field__input" style="height: 32px; font-size: 0.8rem;"
+                    [(ngModel)]="uploadVersionDescription" placeholder="Descripción de los cambios realizados..." />
                 </div>
 
                 <div style="display: flex; justify-content: flex-end;">
-                  <button type="button" class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.8rem;" 
-                          (click)="uploadNewVersion()" [disabled]="!selectedUploadFile || uploadingVersion()">
-                    <span *ngIf="!uploadingVersion()">📤 Cargar Versión</span>
+                  <button type="button" class="btn-primary" style="padding: 0.4rem 1rem; font-size: 0.8rem;"
+                    (click)="uploadNewVersion()" [disabled]="!selectedUploadFile || uploadingVersion()">
+                    <span *ngIf="!uploadingVersion()">Cargar Versión</span>
                     <span *ngIf="uploadingVersion()" class="spinner spinner--sm"></span>
                   </button>
                 </div>
               </div>
 
               <!-- Version History -->
-              <div class="history-wrapper" style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; font-weight: 600; color: var(--accent-primary);">Historial de Versiones</h4>
-                
-                <div class="history-list" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; background: rgba(0,0,0,0.15);">
-                  <div *ngIf="loadingHistory()" style="text-align: center; font-size: 0.75rem; color: var(--text-secondary); padding: 0.5rem;">Cargando historial...</div>
-                  <div *ngIf="!loadingHistory() && versionHistory().length === 0" style="text-align: center; font-size: 0.75rem; color: var(--text-secondary); padding: 0.5rem;">No hay versiones anteriores.</div>
-                  
-                  <div *ngFor="let ver of versionHistory()" class="history-item" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 0.5rem;">
-                    <div style="display: flex; flex-direction: column; gap: 0.15rem; text-align: left; overflow: hidden;">
-                      <span style="font-weight: 600;">Versión {{ ver.versionNumber }} <span style="font-weight: normal; color: var(--text-secondary);">por {{ ver.modifiedBy }}</span></span>
-                      <span style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 250px;">"{{ ver.changeDescription || 'Sin descripción' }}"</span>
+              <div class="history-wrapper"
+                style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                <h4 style="margin: 0 0 0.5rem 0; font-size: 0.85rem; font-weight: 600; color: var(--accent-primary);">
+                  Historial de Versiones</h4>
+
+                <div class="history-list"
+                  style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 0.4rem; border: 1px solid var(--border-color); border-radius: 6px; padding: 0.5rem; background: rgba(0,0,0,0.15);">
+                  <div *ngIf="loadingHistory()"
+                    style="text-align: center; font-size: 0.75rem; color: var(--text-secondary); padding: 0.5rem;">
+                    Cargando historial...</div>
+                  <div *ngIf="!loadingHistory() && versionHistory().length === 0"
+                    style="text-align: center; font-size: 0.75rem; color: var(--text-secondary); padding: 0.5rem;">No
+                    hay versiones anteriores.</div>
+
+                  <div *ngFor="let ver of versionHistory()" class="history-item"
+                    style="display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; padding: 0.4rem; border-bottom: 1px solid rgba(255,255,255,0.03); gap: 0.5rem;">
+                    <div
+                      style="display: flex; flex-direction: column; gap: 0.15rem; text-align: left; overflow: hidden;">
+                      <span style="font-weight: 600;">Versión {{ ver.versionNumber }} <span
+                          style="font-weight: normal; color: var(--text-secondary);">por {{ getUserName(ver.modifiedBy)
+                          }}</span></span>
+                      <span
+                        style="color: var(--text-secondary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 250px;">"{{
+                        ver.changeDescription || 'Sin descripción' }}"</span>
                     </div>
-                    <button type="button" *ngIf="selectedDocPermission() === 'EDIT'" class="btn-restore" (click)="restoreVersion(ver.versionNumber)" style="background: none; border: none; color: var(--accent-primary); cursor: pointer; padding: 0.2rem 0.4rem; font-weight: 600;">Restaurar</button>
+                    <button type="button" *ngIf="selectedDocPermission() === 'EDIT'" class="btn-restore"
+                      (click)="restoreVersion(ver.versionNumber)"
+                      style="background: none; border: none; color: var(--accent-primary); cursor: pointer; padding: 0.2rem 0.4rem; font-weight: 600;">Restaurar</button>
                   </div>
                 </div>
               </div>
@@ -305,18 +346,26 @@
       </div>
 
       <!-- Modal: Guardar Versión con Descripción -->
-      <div class="modal-overlay" *ngIf="showSaveVersionModal()" (click)="showSaveVersionModal.set(false)" style="z-index: 1100;">
-        <div class="modal modal--sm" (click)="$event.stopPropagation()" style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-          <h3 class="modal__title" style="margin-top: 0; font-size: 1.05rem; font-weight: 600; color: var(--accent-primary);">Guardar Nueva Versión</h3>
-          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">Escribe una breve descripción de los cambios realizados para el historial de versiones:</p>
-          
+      <div class="modal-overlay" *ngIf="showSaveVersionModal()" (click)="showSaveVersionModal.set(false)"
+        style="z-index: 1100;">
+        <div class="modal modal--sm" (click)="$event.stopPropagation()"
+          style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+          <h3 class="modal__title"
+            style="margin-top: 0; font-size: 1.05rem; font-weight: 600; color: var(--accent-primary);">Guardar Nueva
+            Versión</h3>
+          <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 1rem;">Escribe una breve descripción
+            de los cambios realizados para el historial de versiones:</p>
+
           <div class="form-field" style="margin-bottom: 1rem;">
-            <input class="form-field__input" [(ngModel)]="newVersionDescription" placeholder="Ej: Corregí faltas de ortografía" style="font-size: 0.85rem;" />
+            <input class="form-field__input" [(ngModel)]="newVersionDescription"
+              placeholder="Ej: Corregí faltas de ortografía" style="font-size: 0.85rem;" />
           </div>
-          
+
           <div class="modal__footer" style="display: flex; justify-content: flex-end; gap: 0.75rem;">
-            <button class="modal__cancel" (click)="showSaveVersionModal.set(false)" style="padding: 0.4rem 1rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; border-radius: 4px;">Cancelar</button>
-            <button type="button" class="btn-primary" (click)="confirmSaveVersion()" style="padding: 0.4rem 1rem; font-size: 0.8rem; border-radius: 4px;">Confirmar</button>
+            <button class="modal__cancel" (click)="showSaveVersionModal.set(false)"
+              style="padding: 0.4rem 1rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); cursor: pointer; border-radius: 4px;">Cancelar</button>
+            <button type="button" class="btn-primary" (click)="confirmSaveVersion()"
+              style="padding: 0.4rem 1rem; font-size: 0.8rem; border-radius: 4px;">Confirmar</button>
           </div>
         </div>
       </div>

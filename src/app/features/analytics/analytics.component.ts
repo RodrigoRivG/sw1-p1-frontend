@@ -90,6 +90,11 @@ export class AnalyticsComponent implements OnInit {
     this.loadPolicies();
   }
 
+  toHours(min: any): number {
+    const val = typeof min === 'string' ? parseFloat(min) : min;
+    return isNaN(val) ? 0 : Math.floor(val / 60);
+  }
+
   setTab(tab: 'dashboard' | 'report'): void {
     this.activeTab.set(tab);
   }
@@ -182,7 +187,7 @@ export class AnalyticsComponent implements OnInit {
     const requests = inProgress.map(proc => {
       const policyId = (proc as any).policyId;
       const policy = policyId ? this.policiesMap.get(policyId) : null;
-      
+
       const nodes = (policy?.diagram?.['nodes'] as any[]) || [];
       const numNodes = nodes.filter(n => n.data?.type === 'task').length;
       const numParallel = nodes.filter(n => n.data?.type === 'fork').length;

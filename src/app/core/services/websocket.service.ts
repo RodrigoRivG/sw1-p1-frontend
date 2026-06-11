@@ -66,11 +66,12 @@ export class WebsocketService {
     });
   }
 
-  publish(destination: string, body: any): void {
+  publish(destination: string, body: any, headers?: Record<string, string>): void {
     if (this.client && this.client.active) {
       this.client.publish({
         destination,
         body: JSON.stringify(body),
+        headers,
       });
     } else {
       console.warn('[STOMP] No se puede publicar, no hay conexión activa.');

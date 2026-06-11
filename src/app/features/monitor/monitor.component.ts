@@ -8,6 +8,7 @@ import { PolicyService } from '../../core/services/policy.service';
 import { AuthService } from '../../core/services/auth.service';
 import { DocumentService } from '../../core/services/document.service';
 import { WebsocketService } from '../../core/services/websocket.service';
+import { UserService } from '../../core/services/user.service';
 import { Task, TaskStatus, Procedure, DbDocument, DocumentVersion, PermissionLevel } from '../../core/models';
 import Quill from 'quill';
 
@@ -29,6 +30,7 @@ export class MonitorComponent implements OnInit {
   private procSvc = inject(ProcedureService);
   private iaSvc = inject(IaService);
   private policySvc = inject(PolicyService);
+  private userSvc = inject(UserService);
 
   activeTab = signal<TabType>('pending');
   tasks = signal<TaskViewModel[]>([]);
@@ -52,6 +54,8 @@ export class MonitorComponent implements OnInit {
   versionHistory = signal<DocumentVersion[]>([]);
   loadingHistory = signal<boolean>(false);
   activeEditors = signal<any[]>([]);
+  usersMap = signal<Map<string, string>>(new Map());
+  editorMaximized = signal(false);
   showSaveVersionModal = signal(false);
   newVersionDescription = '';
   selectedUploadFile: File | null = null;
@@ -77,6 +81,28 @@ export class MonitorComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadTasks();
+    this.loadUsers();
+  }
+
+  loadUsers(): void {
+    this.userSvc.getAll().subscribe({
+      next: (users) => {
+        const map = new Map<string, string>();
+        users.forEach(u => {
+          map.set(u.id, u.name || u.email);
+        });
+        this.usersMap.set(map);
+      },
+      error: (err) => console.error('Error loading users:', err)
+    });
+  }
+
+  getUserName(userId: string): string {
+    return this.usersMap().get(userId) || userId;
+  }
+
+  toggleEditorMaximize(): void {
+    this.editorMaximized.update(val => !val);
   }
 
   loadTasks(): void {
@@ -190,6 +216,7 @@ export class MonitorComponent implements OnInit {
     this.formElements.set([]);
     this.formValues = {};
     this.activeMicFieldId = null;
+    this.editorMaximized.set(false);
   }
 
   // --- IA & Speech Recognition Logic ---
@@ -379,6 +406,7 @@ export class MonitorComponent implements OnInit {
     this.cleanupWebSocket();
     this.selectedDocument.set(item.document);
     this.selectedDocPermission.set(item.permissionLevel);
+    this.editorMaximized.set(false);
     
     this.versionHistory.set([]);
     this.quill = null;
@@ -444,6 +472,8 @@ export class MonitorComponent implements OnInit {
           // Unirse a la sala
           this.wsSvc.publish(`/app/documents/${doc.id}/join`, {
             userId: user.id,
+            userName: `${user.firstName} ${user.lastName}`
+          }, {
             userName: `${user.firstName} ${user.lastName}`
           });
         });

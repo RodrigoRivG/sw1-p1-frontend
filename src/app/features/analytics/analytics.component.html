@@ -53,14 +53,14 @@
 
   <!-- Main Content (Dashboard Tab) -->
   <div class="analytics-content" *ngIf="data() && !loading() && !error() && activeTab() === 'dashboard'">
-    
+
     <!-- KPI Grid -->
     <div class="kpi-grid">
       <!-- Card 1 -->
       <div class="kpi-card kpi-card--blue">
         <div class="kpi-card__header">
           <span class="kpi-card__title">Trámites Totales</span>
-          <span class="kpi-card__icon">📋</span>
+          <!--<span class="kpi-card__icon">📋</span>-->
         </div>
         <div class="kpi-card__value">{{ data()?.totalProcedures }}</div>
         <div class="kpi-card__footer">Iniciados en la plataforma</div>
@@ -70,11 +70,12 @@
       <div class="kpi-card kpi-card--green">
         <div class="kpi-card__header">
           <span class="kpi-card__title">Trámites Completados</span>
-          <span class="kpi-card__icon">✅</span>
+          <!--<span class="kpi-card__icon">✅</span>-->
         </div>
         <div class="kpi-card__value">{{ data()?.completedProcedures }}</div>
         <div class="kpi-card__footer">
-          {{ data()?.totalProcedures ? ((data()?.completedProcedures || 0) / (data()?.totalProcedures || 1) * 100 | number:'1.0-1') : 0 }}% tasa de éxito
+          {{ data()?.totalProcedures ? ((data()?.completedProcedures || 0) / (data()?.totalProcedures || 1) * 100 |
+          number:'1.0-1') : 0 }}% tasa de éxito
         </div>
       </div>
 
@@ -82,7 +83,7 @@
       <div class="kpi-card kpi-card--orange">
         <div class="kpi-card__header">
           <span class="kpi-card__title">Trámites En Proceso</span>
-          <span class="kpi-card__icon">⏳</span>
+          <!--<span class="kpi-card__icon">⏳</span>-->
         </div>
         <div class="kpi-card__value">{{ data()?.inProgressProcedures }}</div>
         <div class="kpi-card__footer">Activos actualmente</div>
@@ -92,7 +93,7 @@
       <div class="kpi-card kpi-card--purple">
         <div class="kpi-card__header">
           <span class="kpi-card__title">Tareas Completadas</span>
-          <span class="kpi-card__icon">⚙️</span>
+          <!--<span class="kpi-card__icon">⚙️</span>-->
         </div>
         <div class="kpi-card__value">{{ data()?.totalCompletedTasks }}</div>
         <div class="kpi-card__footer">Pasos individuales resueltos</div>
@@ -103,30 +104,32 @@
     <div class="insights-grid">
       <!-- Bottleneck Alert -->
       <div class="insight-panel insight-panel--alert">
-        <div class="insight-icon-container">
+        <!--<div class="insight-icon-container">
           <span class="insight-icon">⚠️</span>
-        </div>
+        </div>-->
         <div class="insight-info">
           <h3>Cuello de Botella Detectado</h3>
           <p class="insight-desc">La actividad que más tiempo promedio requiere para completarse es:</p>
           <div class="insight-highlight">{{ data()?.bottleneckNode }}</div>
           <div class="insight-meta">
-            Promedio: <strong>{{ data()?.avgTimeByNode?.[data()?.bottleneckNode || ''] | number:'1.0-1' }} minutos</strong>
+            Promedio: <strong>{{ toHours(data()?.avgTimeByNode?.[data()?.bottleneckNode || ''] || 0) }}
+              horas</strong>
           </div>
         </div>
       </div>
 
       <!-- Employee Trophy -->
       <div class="insight-panel insight-panel--success">
-        <div class="insight-icon-container">
+        <!-- <div class="insight-icon-container">
           <span class="insight-icon">🏆</span>
-        </div>
+        </div>-->
         <div class="insight-info">
           <h3>Funcionario Más Eficiente</h3>
           <p class="insight-desc">El empleado que completa sus tareas en el menor tiempo promedio es:</p>
           <div class="insight-highlight">{{ data()?.mostEfficientUser }}</div>
           <div class="insight-meta">
-            Promedio de resolución: <strong>{{ data()?.avgTimeByUser?.[data()?.mostEfficientUser || ''] | number:'1.0-1' }} minutos</strong>
+            Promedio de resolución: <strong>{{ toHours(data()?.avgTimeByUser?.[data()?.mostEfficientUser || ''] || 0)
+              }} horas</strong>
           </div>
         </div>
       </div>
@@ -134,22 +137,23 @@
 
     <!-- Charts / Visualization Section -->
     <div class="charts-container">
-      
+
       <!-- Nodes Time Chart -->
       <div class="chart-box">
         <div class="chart-box__header">
           <h3>⏱️ Tiempo Promedio por Actividad (Nodos)</h3>
-          <span class="chart-box__subtitle">Identifica qué etapas del trámite demoran más (ordenado de lento a rápido)</span>
+          <span class="chart-box__subtitle">Identifica qué etapas del trámite demoran más (ordenado de lento a
+            rápido)</span>
         </div>
         <div class="chart-box__body">
           <div class="no-data" *ngIf="nodesChart().length === 0">
             No hay tareas completadas registradas para calcular promedios.
           </div>
-          
+
           <div class="chart-row" *ngFor="let item of nodesChart()">
             <div class="chart-row-info">
               <span class="chart-row-name">{{ item.name }}</span>
-              <span class="chart-row-value">{{ item.time | number:'1.0-1' }} min</span>
+              <span class="chart-row-value">{{ toHours(item.time) }} h</span>
             </div>
             <div class="chart-bar-container">
               <div class="chart-bar chart-bar--red" [style.width.%]="item.percentage"></div>
@@ -161,8 +165,9 @@
       <!-- Users Efficiency Leaderboard -->
       <div class="chart-box">
         <div class="chart-box__header">
-          <h3>🥇 Leaderboard de Eficiencia (Funcionarios)</h3>
-          <span class="chart-box__subtitle">Clasificación por velocidad de resolución promedio (más rápido a más lento)</span>
+          <h3> Leaderboard de Eficiencia (Funcionarios)</h3>
+          <span class="chart-box__subtitle">Clasificación por velocidad de resolución promedio (más rápido a más
+            lento)</span>
         </div>
         <div class="chart-box__body">
           <div class="no-data" *ngIf="usersChart().length === 0">
@@ -172,16 +177,13 @@
           <div class="chart-row" *ngFor="let item of usersChart(); let i = index">
             <div class="chart-row-info">
               <span class="chart-row-name">
-                <span class="leaderboard-rank" 
-                      [class.rank-gold]="i === 0" 
-                      [class.rank-silver]="i === 1" 
-                      [class.rank-bronze]="i === 2"
-                      [class.rank-other]="i > 2">
+                <span class="leaderboard-rank" [class.rank-gold]="i === 0" [class.rank-silver]="i === 1"
+                  [class.rank-bronze]="i === 2" [class.rank-other]="i > 2">
                   {{ i + 1 }}
                 </span>
                 {{ item.name }}
               </span>
-              <span class="chart-row-value">{{ item.time | number:'1.0-1' }} min</span>
+              <span class="chart-row-value">{{ toHours(item.time) }} h</span>
             </div>
             <div class="chart-bar-container">
               <div class="chart-bar chart-bar--green" [style.width.%]="item.percentage"></div>
@@ -200,36 +202,25 @@
     <div class="query-card">
       <div class="query-card__header">
         <h2>Consultas del Administrador</h2>
-        <p>Escribe o dicta por voz una consulta en lenguaje natural para generar un reporte dinámico de trámites.</p>
+        <p>Escribe o dicta por voz una consulta para generar un reporte de trámites.</p>
       </div>
       <div class="query-card__body">
         <div class="query-input-wrapper">
-          <textarea 
-            class="query-textarea" 
-            [ngModel]="queryText()"
-            (ngModelChange)="queryText.set($event)"
+          <textarea class="query-textarea" [ngModel]="queryText()" (ngModelChange)="queryText.set($event)"
             (keydown.enter)="$event.preventDefault(); generateReport()"
-            placeholder="Ej: reporte de compras del 1 de mayo al 31 de mayo..."
-            rows="3">
+            placeholder="Ej: reporte de compras del 1 de mayo al 31 de mayo..." rows="3">
           </textarea>
-          
+
           <div class="query-actions">
-            <button 
-              type="button" 
-              class="mic-btn" 
-              [class.mic-btn--active]="isListeningVoice()" 
-              (click)="toggleVoice()" 
+            <button type="button" class="mic-btn" [class.mic-btn--active]="isListeningVoice()" (click)="toggleVoice()"
               [title]="isListeningVoice() ? 'Detener dictado' : 'Iniciar dictado por voz'">
               <span class="mic-icon">🎤</span>
               <span class="pulse-ring" *ngIf="isListeningVoice()"></span>
             </button>
-            
-            <button 
-              type="button" 
-              class="btn-primary generate-btn" 
-              [disabled]="!queryText().trim() || loadingReport()" 
+
+            <button type="button" class="btn-primary generate-btn" [disabled]="!queryText().trim() || loadingReport()"
               (click)="generateReport()">
-              <span *ngIf="!loadingReport()">⚡ Generar Reporte</span>
+              <span *ngIf="!loadingReport()">Generar Reporte</span>
               <span *ngIf="loadingReport()" class="spinner spinner--sm"></span>
             </button>
           </div>
@@ -253,21 +244,29 @@
 
     <!-- Report Results Area -->
     <div class="report-results" *ngIf="reportResult() && !loadingReport() && !reportError()">
-      
+
       <!-- Badges with Filters Detected -->
       <div class="filters-detected">
         <span class="filters-label">Filtros Detectados:</span>
         <div class="badges-list">
-          <span class="filter-badge filter-badge--period" *ngIf="reportResult()?.filters?.startDate || reportResult()?.filters?.endDate">
-            📅 Período: {{ reportResult()?.filters?.startDate ? (reportResult()?.filters?.startDate | date:'dd/MM/yyyy') : 'Inicio' }} - {{ reportResult()?.filters?.endDate ? (reportResult()?.filters?.endDate | date:'dd/MM/yyyy') : 'Hoy' }}
+          <span class="filter-badge filter-badge--period"
+            *ngIf="reportResult()?.filters?.startDate || reportResult()?.filters?.endDate">
+            📅 Período: {{ reportResult()?.filters?.startDate ? (reportResult()?.filters?.startDate | date:'dd/MM/yyyy')
+            : 'Inicio' }} - {{ reportResult()?.filters?.endDate ? (reportResult()?.filters?.endDate | date:'dd/MM/yyyy')
+            : 'Hoy' }}
           </span>
           <span class="filter-badge filter-badge--dept" *ngIf="reportResult()?.filters?.department">
             🏢 Depto: {{ reportResult()?.filters?.department }}
           </span>
-          <span class="filter-badge filter-badge--type" *ngIf="reportResult()?.filters?.type">
+           <span class="filter-badge filter-badge--type" *ngIf="reportResult()?.filters?.type">
             🏷️ Tipo: {{ reportResult()?.filters?.type }}
           </span>
-          <span class="filter-badge filter-badge--empty" *ngIf="!reportResult()?.filters?.startDate && !reportResult()?.filters?.endDate && !reportResult()?.filters?.department && !reportResult()?.filters?.type">
+          <span class="filter-badge filter-badge--client" *ngIf="reportResult()?.filters?.client"
+            style="background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.6rem; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px;">
+            👤 Cliente: {{ reportResult()?.filters?.client }}
+          </span>
+          <span class="filter-badge filter-badge--empty"
+            *ngIf="!reportResult()?.filters?.startDate && !reportResult()?.filters?.endDate && !reportResult()?.filters?.department && !reportResult()?.filters?.type && !reportResult()?.filters?.client">
             🔎 Ninguno (Reporte global)
           </span>
         </div>
@@ -291,7 +290,8 @@
             <span class="kpi-card__title">Departamento Consultado</span>
             <span class="kpi-card__icon">🏢</span>
           </div>
-          <div class="kpi-card__value" style="font-size: 1.6rem; line-height: 2.2rem; padding-top: 0.5rem; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <div class="kpi-card__value"
+            style="font-size: 1.6rem; line-height: 2.2rem; padding-top: 0.5rem; text-transform: capitalize; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
             {{ reportResult()?.report?.department || 'Todos' }}
           </div>
           <div class="kpi-card__footer">Filtro organizativo</div>
@@ -300,15 +300,16 @@
 
       <!-- Procedures Table -->
       <div class="report-table-box">
-        <div class="report-table-box__header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div class="report-table-box__header"
+          style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
           <div>
             <h3>📋 Listado de Trámites Filtrados</h3>
             <p>Resultados limpios preparados para exportación</p>
           </div>
-          <button class="btn-primary" 
-                  [disabled]="analyzingAnomalies() || reportResult()?.report?.procedures?.length === 0" 
-                  (click)="detectAnomalies()"
-                  style="font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 8px; margin-right: 1rem;">
+          <button class="btn-primary"
+            [disabled]="analyzingAnomalies() || reportResult()?.report?.procedures?.length === 0"
+            (click)="detectAnomalies()"
+            style="font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 8px; margin-right: 1rem;">
             <span *ngIf="!analyzingAnomalies()">🔍 Detectar Anomalías</span>
             <span *ngIf="analyzingAnomalies()" class="spinner spinner--sm"></span>
             <span *ngIf="analyzingAnomalies()"> Analizando...</span>
@@ -318,7 +319,7 @@
           <div class="no-data" *ngIf="reportResult()?.report?.procedures?.length === 0">
             No se encontraron trámites que coincidan con la consulta.
           </div>
-          
+
           <table class="report-table" *ngIf="reportResult()?.report?.procedures?.length! > 0">
             <thead>
               <tr>
@@ -339,20 +340,22 @@
                 <td class="td-policy">{{ proc.policyName || 'N/A' }}</td>
                 <td class="td-date">{{ proc.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td class="td-time">
-                  <span *ngIf="proc.totalMinutes === 'En proceso'" class="badge-status badge-status--process">⏳ En proceso</span>
-                  <span *ngIf="proc.totalMinutes !== 'En proceso'">⏱️ {{ proc.totalMinutes }} min</span>
+                  <span *ngIf="proc.totalMinutes === 'En proceso'" class="badge-status badge-status--process">⏳ En
+                    proceso</span>
+                  <span *ngIf="proc.totalMinutes !== 'En proceso'">⏱️ {{ toHours(proc.totalMinutes) }} h</span>
                 </td>
                 <td class="td-anomaly">
                   <span *ngIf="!getAnomalyResult(proc.id)" class="badge-anomaly badge-anomaly--none">-</span>
                   <span *ngIf="getAnomalyResult(proc.id) as res" class="badge-anomaly"
-                        [class.badge-anomaly--normal]="res.severity === 'normal'"
-                        [class.badge-anomaly--media]="res.severity === 'media'"
-                        [class.badge-anomaly--alta]="res.severity === 'alta'">
+                    [class.badge-anomaly--normal]="res.severity === 'normal'"
+                    [class.badge-anomaly--media]="res.severity === 'media'"
+                    [class.badge-anomaly--alta]="res.severity === 'alta'">
                     {{ res.severity | uppercase }}
                   </span>
                 </td>
                 <td class="td-status">
-                  <span class="badge-status" [class.badge-status--completed]="proc.status === 'completed'" [class.badge-status--active]="proc.status === 'in_progress' || proc.status === 'pending'">
+                  <span class="badge-status" [class.badge-status--completed]="proc.status === 'completed'"
+                    [class.badge-status--active]="proc.status === 'in_progress' || proc.status === 'pending'">
                     {{ proc.status === 'completed' ? 'Completado' : 'Activo' }}
                   </span>
                 </td>

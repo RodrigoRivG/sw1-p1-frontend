@@ -8,7 +8,7 @@ import { NgIf, NgFor, PercentPipe } from '@angular/common';
 import * as joint from '@joint/core';
 import { PolicyService } from '../../core/services/policy.service';
 import { PolicyRequest, DbDocument, PermissionLevel } from '../../core/models';
-import { UserService } from '../../core/services/user.service';
+import { UserService, BasicUser } from '../../core/services/user.service';
 import { WebsocketService } from '../../core/services/websocket.service';
 import { IaService } from '../../core/services/ia.service';
 import { DocumentService } from '../../core/services/document.service';
@@ -88,6 +88,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
   // ── Diagram data ──────────────────────────────────────────────
   swimlanes = signal<DiagramSwimlane[]>([]);
   collaborators = signal<string[]>([]);
+  usersMap = signal<Map<string, string>>(new Map());
 
   // Paper dimensions (kept in sync between HTML layer and JointJS paper)
   paperWidth = signal(600);
@@ -177,6 +178,7 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.initSpeechRecognition();
     this.loadAnalyticsData();
+    this.loadUsers();
   }
 
   ngAfterViewInit(): void {
@@ -625,6 +627,23 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
     this.broadcastUpdate();
   }
 
+  loadUsers(): void {
+    this.userSvc.getAll().subscribe({
+      next: (users) => {
+        const map = new Map<string, string>();
+        users.forEach(u => {
+          map.set(u.id, u.name || u.email);
+        });
+        this.usersMap.set(map);
+      },
+      error: (err) => console.error('Error loading users:', err)
+    });
+  }
+
+  getCollaboratorName(userId: string): string {
+    return this.usersMap().get(userId) || userId;
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Collaborators
   // ─────────────────────────────────────────────────────────────
@@ -640,12 +659,24 @@ export class DesignerComponent implements OnInit, AfterViewInit, OnDestroy {
         this.resolvingEmail.set(false);
         if (this.collaborators().includes(user.id)) { this.emailError.set('Este usuario ya es colaborador.'); return; }
         const pid = this.policyId();
+        const updateMap = () => {
+          this.usersMap.update(map => {
+            const newMap = new Map(map);
+            newMap.set(user.id, user.name || user.email);
+            return newMap;
+          });
+        };
         if (pid) {
           this.policySvc.addCollaborator(pid, user.id).subscribe({
-            next: () => { this.collaborators.update(c => [...c, user.id]); this.showAddCollaborator.set(false); },
+            next: () => {
+              updateMap();
+              this.collaborators.update(c => [...c, user.id]);
+              this.showAddCollaborator.set(false);
+            },
             error: () => this.emailError.set('Error al guardar el colaborador.')
           });
         } else {
+          updateMap();
           this.collaborators.update(c => [...c, user.id]);
           this.showAddCollaborator.set(false);
         }

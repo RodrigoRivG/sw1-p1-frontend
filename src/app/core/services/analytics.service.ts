@@ -19,6 +19,7 @@ export interface ReportFilter {
   endDate: string | null;
   department: string | null;
   type: string | null;
+  client?: string | null;
 }
 
 export interface ReportProcedure {
