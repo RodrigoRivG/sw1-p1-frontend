@@ -438,11 +438,11 @@ export class MonitorComponent implements OnInit {
             if (!msg) return;
             const currentList = this.activeEditors();
             if (msg.action === 'JOIN') {
-              if (!currentList.some(u => u.userId === msg.userId)) {
+              if (!currentList.some(u => String(u.userId) === String(msg.userId))) {
                 this.activeEditors.set([...currentList, { userId: msg.userId, userName: msg.userName, color: msg.color || '#5b6ef0' }]);
               }
             } else if (msg.action === 'LEAVE') {
-              this.activeEditors.set(currentList.filter(u => u.userId !== msg.userId));
+              this.activeEditors.set(currentList.filter(u => String(u.userId) !== String(msg.userId)));
             }
           });
           if (presenceSub) this.stompSubscriptions.push(presenceSub);
@@ -450,7 +450,7 @@ export class MonitorComponent implements OnInit {
           // 3. Suscribirse a actualizaciones de edición en tiempo real
           const editsSub = this.wsSvc.subscribe(`/topic/documents/${doc.id}/edits`, (msg: any) => {
             if (!msg) return;
-            if (msg.content !== undefined && msg.userId !== user.id) {
+            if (msg.content !== undefined && String(msg.userId) !== String(user.id)) {
               if (this.quill && this.quill.root.innerHTML !== msg.content) {
                 const selection = this.quill.getSelection();
                 this.quill.root.innerHTML = msg.content || '';
